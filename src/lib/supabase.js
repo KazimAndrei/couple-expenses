@@ -22,7 +22,9 @@ export async function authWithInviteCode(code, displayName) {
   // Ensure we have a session (anonymous)
   let session = await getSession();
   if (!session) {
-    const { data } = await supabase.auth.signInAnonymously();
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) throw new Error('Ошибка авторизации: ' + error.message);
+    if (!data?.session) throw new Error('Не удалось создать сессию. Проверь что Anonymous Sign-In включён в Supabase.');
     session = data.session;
   }
   
