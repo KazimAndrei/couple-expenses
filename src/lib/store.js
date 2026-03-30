@@ -6,6 +6,8 @@ const state = {
   expenses: [],
   budgets: [],
   goals: [],
+  members: [],
+  filterBy: null,
   currentMonth: null,
   loading: true,
 };

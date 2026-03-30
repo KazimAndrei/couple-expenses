@@ -1,5 +1,5 @@
 import './styles/app.css';
-import { supabase, getSession, getProfile, getExpenses, addExpense, deleteExpense, getCategories, getBudgets, getGoals, addGoal, addGoalContribution, getMonthlyTotals, getPayerTotals, createCouple, joinCouple, signOut, signInAnonymously, authWithInviteCode, subscribeToExpenses, subscribeToGoals } from './lib/supabase.js';
+import { supabase, getSession, getProfile, getCoupleMembers, getExpenses, addExpense, deleteExpense, getCategories, getBudgets, getGoals, addGoal, addGoalContribution, getMonthlyTotals, getPayerTotals, createCouple, joinCouple, signOut, signInAnonymously, authWithInviteCode, subscribeToExpenses, subscribeToGoals } from './lib/supabase.js';
 import { formatMoney, formatMonth, formatDate, currentMonth, prevMonth, nextMonth, todayStr, groupByDate, pct, icon } from './lib/utils.js';
 import { route, navigate, startRouter, getCurrentPath } from './lib/router.js';
 import { getState, setState, subscribe } from './lib/store.js';
@@ -38,7 +38,14 @@ function renderTabBar() {
 
 // ---- Add Expense Modal ----
 function showAddExpenseModal() {
-  const { categories, profile, couple } = getState();
+  const { categories, profile, couple, members } = getState();
+  const me = members.find(m => m.id === profile?.id);
+  const partner = members.find(m => m.id !== profile?.id);
+  const meAvatar = me?.avatar_url ? `<img src="${me.avatar_url}" class="payer-avatar">` : `<div class="payer-avatar payer-avatar-initials">${(me?.display_name || 'Я')[0]}</div>`;
+  const partnerAvatar = partner?.avatar_url ? `<img src="${partner.avatar_url}" class="payer-avatar">` : `<div class="payer-avatar payer-avatar-initials">${(partner?.display_name || 'П')[0]}</div>`;
+  const meName = me?.display_name || 'Я';
+  const partnerName = partner?.display_name || 'Партнёр';
+  const currSymbol = couple?.currency === 'THB' ? '฿' : couple?.currency === 'RUB' ? '₽' : '$';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
@@ -47,7 +54,10 @@ function showAddExpenseModal() {
       <div class="modal-handle"></div>
       <div class="modal-title">Новый расход</div>
       <div class="form-group">
-        <input type="number" class="form-input amount" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off">
+        <div class="amount-input-wrap">
+          <span class="amount-currency">${currSymbol}</span>
+          <input type="number" class="form-input amount" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Описание</label>
@@ -68,9 +78,14 @@ function showAddExpenseModal() {
       </div>
       <div class="form-group">
         <label class="form-label">Кто платит</label>
-        <select class="form-input" id="exp-payer">
-          <option value="${profile?.id}">Я</option>
-        </select>
+        <div class="payer-options">
+          <div class="payer-option selected" data-id="${me?.id}" onclick="selectPayer(this)">
+            ${meAvatar}<span>${meName}</span>
+          </div>
+          ${partner ? `<div class="payer-option" data-id="${partner.id}" onclick="selectPayer(this)">
+            ${partnerAvatar}<span>${partnerName}</span>
+          </div>` : ''}
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Дата</label>
@@ -80,8 +95,8 @@ function showAddExpenseModal() {
         <label class="form-label">Деление</label>
         <div class="split-options">
           <div class="split-option selected" data-split="equal" onclick="selectSplit(this)">50/50</div>
-          <div class="split-option" data-split="full_payer" onclick="selectSplit(this)">100% я</div>
-          <div class="split-option" data-split="full_other" onclick="selectSplit(this)">100% партнёр</div>
+          <div class="split-option" data-split="full_payer" onclick="selectSplit(this)">100% ${meName}</div>
+          <div class="split-option" data-split="full_other" onclick="selectSplit(this)">100% ${partnerName}</div>
         </div>
       </div>
       <button class="btn btn-primary" id="btn-save-exp" style="margin-top: 8px;">Добавить</button>
@@ -97,11 +112,16 @@ function showAddExpenseModal() {
     backdrop.querySelectorAll('.split-option').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
   };
+  window.selectPayer = (el) => {
+    backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+  };
   document.getElementById('btn-save-exp').onclick = async () => {
     const amount = parseFloat(document.getElementById('exp-amount').value);
     const description = document.getElementById('exp-desc').value.trim();
     const categoryEl = backdrop.querySelector('.cat-option.selected');
     const splitEl = backdrop.querySelector('.split-option.selected');
+    const payerEl = backdrop.querySelector('.payer-option.selected');
     const date = document.getElementById('exp-date').value;
     if (!amount || amount <= 0) { showToast('Введите сумму'); return; }
     if (!description) { showToast('Введите описание'); return; }
@@ -109,7 +129,7 @@ function showAddExpenseModal() {
       await addExpense({
         couple_id: couple.id,
         category_id: categoryEl?.dataset.id,
-        paid_by: profile.id,
+        paid_by: payerEl?.dataset.id || profile.id,
         amount, description,
         split: splitEl?.dataset.split || 'equal',
         expense_date: date,
@@ -139,13 +159,14 @@ async function loadAll() {
   const { couple } = getState();
   if (!couple) return;
   const month = getState().currentMonth || currentMonth();
-  const [expenses, categories, budgets, goals] = await Promise.all([
+  const [expenses, categories, budgets, goals, members] = await Promise.all([
     getExpenses(couple.id, month),
     getCategories(couple.id),
     getBudgets(couple.id, month),
     getGoals(couple.id),
+    getCoupleMembers(couple.id),
   ]);
-  setState({ expenses, categories, budgets, goals, currentMonth: month });
+  setState({ expenses, categories, budgets, goals, members, currentMonth: month });
 }
 
 // ---- Auth page ----
@@ -299,9 +320,16 @@ route('/', async (app) => {
 });
 
 function renderHome(app) {
-  const { expenses, currentMonth: month, couple } = getState();
-  const total = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
-  const grouped = groupByDate(expenses);
+  const { expenses, currentMonth: month, couple, profile, members, filterBy } = getState();
+  const filtered = filterBy ? expenses.filter(e => e.paid_by === filterBy) : expenses;
+  const total = filtered.reduce((s, e) => s + parseFloat(e.amount), 0);
+  const grouped = groupByDate(filtered);
+  const me = members?.find(m => m.id === profile?.id);
+  const partner = members?.find(m => m.id !== profile?.id);
+  const meName = me?.display_name || 'Я';
+  const partnerName = partner?.display_name || 'Партнёр';
+  const meAvatar = me?.avatar_url ? `<img src="${me.avatar_url}" class="filter-avatar">` : `<div class="filter-avatar filter-avatar-initials">${meName[0]}</div>`;
+  const partnerAvatar = partner?.avatar_url ? `<img src="${partner.avatar_url}" class="filter-avatar">` : `<div class="filter-avatar filter-avatar-initials">${partnerName[0]}</div>`;
   app.innerHTML = `
     <div class="page-enter">
       <div class="header">
@@ -315,10 +343,15 @@ function renderHome(app) {
         <span class="month-label">${formatMonth(month)}</span>
         <button id="next-month">${icon('chevron-right', 18)}</button>
       </div>
+      <div class="filter-bar">
+        <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">Все</button>
+        <button class="filter-chip ${filterBy === me?.id ? 'active' : ''}" data-filter="${me?.id}">${meAvatar} ${meName}</button>
+        ${partner ? `<button class="filter-chip ${filterBy === partner?.id ? 'active' : ''}" data-filter="${partner.id}">${partnerAvatar} ${partnerName}</button>` : ''}
+      </div>
       <div class="summary-card">
-        <div class="summary-label">Общие расходы</div>
+        <div class="summary-label">${filterBy ? (filterBy === me?.id ? meName : partnerName) : 'Общие'} расходы</div>
         <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
-        <div class="summary-badge">${icon('trending-down', 14)} ${expenses.length} транзакций</div>
+        <div class="summary-badge">${icon('trending-down', 14)} ${filtered.length} транзакций</div>
       </div>
       <div class="tx-section">
         ${grouped.length === 0 ? `
@@ -328,7 +361,7 @@ function renderHome(app) {
           ${items.map(exp => {
             const cat = exp.categories;
             const bgColor = (cat?.color || '#888780') + '18';
-            const splitLabel = exp.split === 'equal' ? '50/50' : exp.split === 'full_payer' ? exp.profiles?.display_name : exp.split === 'full_other' ? 'Партнёр' : 'Кастом';
+            const splitLabel = exp.split === 'equal' ? '50/50' : exp.split === 'full_payer' ? exp.profiles?.display_name : exp.split === 'full_other' ? (members?.find(m => m.id !== exp.paid_by)?.display_name || 'Партнёр') : 'Кастом';
             return `
               <div class="tx-item" data-id="${exp.id}">
                 <div class="tx-icon" style="background: ${bgColor}">${icon(cat?.icon || 'more-horizontal', 18, cat?.color || '#888780')}</div>
@@ -343,6 +376,13 @@ function renderHome(app) {
     ${renderTabBar()}
   `;
   document.getElementById('add-exp-btn').onclick = showAddExpenseModal;
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.onclick = () => {
+      const f = chip.dataset.filter;
+      setState({ filterBy: f === 'all' ? null : f });
+      renderHome(app);
+    };
+  });
   document.getElementById('prev-month').onclick = () => {
     setState({ currentMonth: prevMonth(month) });
     loadAll().then(() => renderHome(app));

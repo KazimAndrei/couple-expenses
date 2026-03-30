@@ -68,6 +68,16 @@ export async function getProfile() {
   return data;
 }
 
+// Get both partners in a couple
+export async function getCoupleMembers(coupleId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, avatar_url')
+    .eq('couple_id', coupleId);
+  if (error) { console.error('getCoupleMembers error:', error); return []; }
+  return data || [];
+}
+
 // ---- Couple helpers ----
 export async function createCouple(name = 'Our Budget') {
   const { data: couple, error: coupleErr } = await supabase

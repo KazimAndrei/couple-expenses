@@ -220,3 +220,25 @@ select.form-input { cursor:pointer; }
 @keyframes toastOut { to { opacity:0; transform:translateX(-50%) translateY(-20px); } }
 
 ::-webkit-scrollbar { width:0; }
+
+
+/* Payer selection */
+.payer-options { display:flex; gap:8px; }
+.payer-option { flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; background:var(--c-surface-alt); border:2px solid transparent; border-radius:var(--radius-sm); cursor:pointer; font-size:14px; transition:all 0.15s; }
+.payer-option.selected { border-color:var(--c-accent); background:var(--c-accent-light); }
+.payer-avatar { width:28px; height:28px; border-radius:50%; object-fit:cover; }
+.payer-avatar-initials { display:flex; align-items:center; justify-content:center; background:var(--c-accent); color:#fff; font-size:13px; font-weight:600; }
+
+/* Amount with currency */
+.amount-input-wrap { display:flex; align-items:center; background:var(--c-surface); border:1px solid var(--c-border); border-radius:var(--radius-sm); padding-left:16px; }
+.amount-input-wrap:focus-within { border-color:var(--c-accent); }
+.amount-currency { font-size:24px; font-weight:600; color:var(--c-text-secondary); }
+.amount-input-wrap .amount { border:none; background:transparent; padding-left:8px; }
+.amount-input-wrap .amount:focus { outline:none; box-shadow:none; }
+
+/* Filter bar */
+.filter-bar { display:flex; gap:8px; padding:0 16px; margin-bottom:12px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.filter-chip { display:flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; border:1px solid var(--c-border); background:var(--c-surface); font-size:13px; font-weight:500; color:var(--c-text-secondary); cursor:pointer; white-space:nowrap; transition:all 0.15s; }
+.filter-chip.active { border-color:var(--c-accent); background:var(--c-accent-light); color:var(--c-accent-dark); font-weight:600; }
+.filter-avatar { width:20px; height:20px; border-radius:50%; object-fit:cover; }
+.filter-avatar-initials { display:flex; align-items:center; justify-content:center; background:var(--c-accent); color:#fff; font-size:10px; font-weight:600; }
