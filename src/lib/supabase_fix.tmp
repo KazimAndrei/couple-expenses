@@ -1,0 +1,19 @@
+export async function getSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+}
+
+export async function getProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, couples(*)')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) {
+    console.error('getProfile error:', error);
+    return null;
+  }
+  return data;
+}
