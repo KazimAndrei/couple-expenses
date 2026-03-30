@@ -203,8 +203,12 @@ route('/auth', async (app) => {
       // Create anonymous session first
       let session = await getSession();
       if (!session) {
-        const { data } = await supabase.auth.signInAnonymously();
-        session = data.session;
+        const result = await supabase.auth.signInAnonymously();
+        if (result.error) throw new Error('Auth: ' + result.error.message);
+        if (!result.data?.session) throw new Error('Anonymous Sign-In не включён. Включи в Supabase → Authentication → Providers → Anonymous Sign-In');
+        session = result.data.session;
+        // Wait for trigger to create profile
+        await new Promise(r => setTimeout(r, 1000));
       }
       // Update display name
       await supabase.from('profiles').update({ display_name: name }).eq('id', session.user.id);
