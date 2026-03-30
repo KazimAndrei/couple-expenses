@@ -28,18 +28,11 @@ export async function authWithInviteCode(code, displayName) {
     session = data.session;
   }
   
-  // Find couple by invite code
-  const { data: couple, error: findErr } = await supabase
-    .from('couples').select().eq('invite_code', code).single();
-  if (findErr || !couple) throw new Error('Код не найден');
-  
-  // Update profile with couple_id and display name
-  const userId = session.user.id;
-  const { error: updErr } = await supabase
-    .from('profiles')
-    .update({ couple_id: couple.id, display_name: displayName || 'User' })
-    .eq('id', userId);
-  if (updErr) throw updErr;
+  const { data: couple, error: rpcError } = await supabase.rpc('join_couple_by_invite', {
+    p_invite_code: code,
+    p_display_name: displayName || 'User',
+  });
+  if (rpcError || !couple) throw new Error('Код не найден');
   
   // Save code to localStorage so user doesn't need to enter again
   localStorage.setItem('ce_invite_code', code);
@@ -93,12 +86,13 @@ export async function createCouple(name = 'Our Budget') {
 }
 
 export async function joinCouple(inviteCode) {
-  const { data: couple, error } = await supabase
-    .from('couples').select().eq('invite_code', inviteCode).single();
-  if (error) throw new Error('Код приглашения не найден');
   const { data: { user } } = await supabase.auth.getUser();
-  await supabase.from('profiles').update({ couple_id: couple.id }).eq('id', user.id);
-  return couple;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', user.id)
+    .maybeSingle();
+  return authWithInviteCode(inviteCode, profile?.display_name || 'User');
 }
 
 // ---- Expense helpers ----

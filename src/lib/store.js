@@ -8,6 +8,7 @@ const state = {
   goals: [],
   members: [],
   filterBy: null,
+  analyticsFilterBy: null,
   currentMonth: null,
   loading: true,
 };

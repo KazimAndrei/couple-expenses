@@ -6,15 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "deploy": "vite build && wrangler pages deploy dist"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.0",
-    "lucide": "^0.460.0"
+    "@supabase/supabase-js": "^2.49.0"
   },
   "devDependencies": {
     "vite": "^6.0.0",
+    "vitest": "^4.1.2",
     "wrangler": "^3.0.0"
   }
 }

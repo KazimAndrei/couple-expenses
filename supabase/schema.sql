@@ -127,6 +127,40 @@ returns uuid language sql security definer stable as $$
   select couple_id from public.profiles where id = auth.uid()
 $$;
 
+create or replace function public.join_couple_by_invite(p_invite_code text, p_display_name text default 'User')
+returns public.couples
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_couple public.couples;
+begin
+  if v_user_id is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select *
+    into v_couple
+  from public.couples
+  where invite_code = p_invite_code
+  limit 1;
+
+  if v_couple.id is null then
+    raise exception 'invite code not found';
+  end if;
+
+  update public.profiles
+  set couple_id = v_couple.id,
+      display_name = coalesce(nullif(p_display_name, ''), display_name)
+  where id = v_user_id;
+
+  return v_couple;
+end;
+$$;
+grant execute on function public.join_couple_by_invite(text, text) to authenticated;
+
 -- PROFILES policies
 create policy "Users can view own profile" on public.profiles for select using (id = auth.uid());
 create policy "Users can view partner" on public.profiles for select using (couple_id = public.my_couple_id() and public.my_couple_id() is not null);
