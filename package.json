@@ -12,6 +12,11 @@
     "deploy": "vite build && wrangler pages deploy dist"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
     "@supabase/supabase-js": "^2.49.0"
   },
   "devDependencies": {

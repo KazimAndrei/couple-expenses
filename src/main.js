@@ -1,9 +1,10 @@
 import './styles/app.css';
-import { supabase, getSession, getProfile, authWithInviteCode, ensureAuthenticated } from './lib/supabase.js';
+import { supabase, ensureAuthenticated } from './lib/supabase.js';
 import { navigate, startRouter, getCurrentPath } from './lib/router.js';
 import { setState } from './lib/store.js';
 import { currentMonth } from './lib/utils.js';
 import { registerServiceWorker } from './services/pwa.js';
+import { initNativePush } from './services/native-push.js';
 import { exposeToastGlobally } from './services/toast.js';
 import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
 import { registerAuthSetupRoutes } from './pages/auth-setup-page.js';
@@ -17,7 +18,6 @@ registerHomeRoute();
 registerAnalyticsRoute();
 registerGoalsRoute();
 registerProfileRoute();
-let authRecoveryInProgress = false;
 
 function renderBootLoader(app) {
   app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -61,39 +61,11 @@ async function init() {
   registerServiceWorker();
   diagStep('init: service worker check done');
 
-  authRecoveryInProgress = true;
-
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    try {
-      diagStep(`auth change: ${event}`);
-      if (authRecoveryInProgress) return;
-      if (event === 'SIGNED_IN') {
-        const profile = await withTimeout(getProfile(), 10000, 'getProfile');
-        if (profile?.couple_id) {
-          setState({ user: session.user, profile, couple: profile.couples || null, currentMonth: currentMonth(), loading: false });
-          if (getCurrentPath() === '/auth') navigate('/');
-        }
-      } else if (event === 'SIGNED_OUT') {
-        if (localStorage.getItem('ce_invite_code')) {
-          authRecoveryInProgress = true;
-          try {
-            const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
-            if (result) {
-              setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || result.couple || null, currentMonth: currentMonth(), loading: false });
-              navigate('/');
-              return;
-            }
-          } catch {
-            // recovery failed
-          } finally {
-            authRecoveryInProgress = false;
-          }
-        }
-        setState({ user: null, profile: null, couple: null, loading: false });
-        navigate('/auth');
-      }
-    } catch (err) {
-      diagError('auth state change failed', err);
+  supabase.auth.onAuthStateChange((event) => {
+    diagStep(`auth change: ${event}`);
+    if (event === 'SIGNED_OUT') {
+      setState({ user: null, profile: null, couple: null, loading: false });
+      navigate('/auth');
     }
   });
 
@@ -103,14 +75,19 @@ async function init() {
   try {
     diagStep('init: reading session');
     const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
-    if (result) {
+    if (result?.profile?.couple_id) {
       diagStep('init: authenticated');
-      setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || result.couple || null, currentMonth: currentMonth(), loading: false });
+      setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || null, currentMonth: currentMonth(), loading: false });
+      initNativePush();
       navigate('/');
+    } else if (result) {
+      diagStep('init: authenticated, no couple');
+      setState({ user: result.session.user, profile: result.profile, loading: false });
+      navigate('/setup');
     } else {
       diagStep('init: not authenticated');
       setState({ loading: false });
-      navigate('/auth');
+      if (!getCurrentPath().startsWith('/invite')) navigate('/auth');
     }
   } catch (err) {
     console.error('Init error:', err);
@@ -122,7 +99,6 @@ async function init() {
     }
     navigate('/auth');
   } finally {
-    authRecoveryInProgress = false;
     clearTimeout(bootFallbackTimer);
   }
 }

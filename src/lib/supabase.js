@@ -1,186 +1,74 @@
 import { createClient } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
-const CE_SESSION_KEY = 'ce_auth_session_v1';
+export const APPLE_APP_BUNDLE_ID = 'com.kazimandrei.coupleexpenses';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function persistSession(session) {
-  if (!session?.access_token || !session?.refresh_token) return;
-  localStorage.setItem(CE_SESSION_KEY, JSON.stringify({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
-  }));
-}
-
-function readPersistedSession() {
-  try {
-    const raw = localStorage.getItem(CE_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.access_token || !parsed?.refresh_token) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function clearPersistedSession() {
-  localStorage.removeItem(CE_SESSION_KEY);
-}
-
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_OUT') {
-    clearPersistedSession();
-    return;
-  }
-  if (session) persistSession(session);
-});
-
 // ---- Auth helpers ----
-export async function signInAnonymously() {
-  const { data, error } = await supabase.auth.signInAnonymously();
+async function sha256Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Native (iOS): ASAuthorization → identity token → signInWithIdToken.
+// Web: обычный OAuth-редирект — страница уходит на Apple и возвращается с сессией.
+export async function signInWithApple() {
+  if (Capacitor.getPlatform() === 'ios') {
+    const { SignInWithApple } = await import('@capacitor-community/apple-sign-in');
+    const rawNonce = crypto.randomUUID();
+    const { response } = await SignInWithApple.authorize({
+      clientId: APPLE_APP_BUNDLE_ID,
+      scopes: 'name email',
+      nonce: await sha256Hex(rawNonce),
+    });
+    if (!response?.identityToken) throw new Error('Apple не вернул identity token');
+
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: response.identityToken,
+      nonce: rawNonce,
+    });
+    if (error) throw error;
+
+    // Apple отдаёт имя только при самом первом входе — сохраняем его сразу.
+    const appleName = [response.givenName, response.familyName].filter(Boolean).join(' ').trim();
+    if (appleName && data?.user) {
+      const { data: profile } = await supabase
+        .from('profiles').select('display_name').eq('id', data.user.id).maybeSingle();
+      if (!profile?.display_name || ['', 'User', 'Пользователь'].includes(profile.display_name)) {
+        await supabase.from('profiles').update({ display_name: appleName }).eq('id', data.user.id);
+      }
+    }
+    return data;
+  }
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'apple',
+    options: { redirectTo: window.location.origin },
+  });
   if (error) throw error;
-  if (data?.session) persistSession(data.session);
-  return data;
+  return null; // страница уходит в редирект
 }
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
-  clearPersistedSession();
-}
-
-// Канонизируем имя: "Andrei"/"andrey"/"Андрей" → "Андрей", аналогично для Полины.
-// Так RPC claim_couple_seat найдёт существующее место даже если ввели в другой раскладке.
-function canonicalizeMemberName(name) {
-  const n = (name || '').trim().toLowerCase();
-  if (!n) return name;
-  if (n.includes('андрей') || n.includes('andrei') || n.includes('andrey') || n.includes('andrew')) return 'Андрей';
-  if (n.includes('полина') || n.includes('polina') || n.includes('поліна')) return 'Полина';
-  return name;
-}
-
-// Join couple by invite code. Проверяет capacity ДО создания anonymous user, чтобы не плодить orphan'ов.
-export async function authWithInviteCode(code, displayName) {
-  const canonicalName = canonicalizeMemberName(displayName);
-  let session = await getSession();
-
-  if (session?.user?.id) {
-    const { data: existing } = await supabase
-      .from('profiles')
-      .select('couple_id, couples(invite_code)')
-      .eq('id', session.user.id)
-      .maybeSingle();
-    if (existing?.couples?.invite_code === code) {
-      localStorage.setItem('ce_invite_code', code);
-      if (displayName) localStorage.setItem('ce_display_name', displayName);
-      return existing.couples;
-    }
-  }
-
-  // Pre-flight capacity check: предотвращает создание orphan auth user, если пара уже полная.
-  // Если имя совпадает с существующим участником — пропускаем (claim_couple_seat возьмёт это место).
-  const { data: capacity, error: capErr } = await supabase.rpc('check_invite_capacity', {
-    p_invite_code: code,
-  });
-  if (capErr) throw new Error('Не удалось проверить код: ' + capErr.message);
-  if (!capacity?.found) throw new Error('Код не найден');
-  if (capacity.full) {
-    const wanted = (canonicalName || '').trim().toLowerCase();
-    const memberNames = capacity.member_names || [];
-    const nameMatches = memberNames.some((m) => m === wanted);
-    if (!nameMatches) {
-      throw new Error('В этой паре уже два участника с другими именами. Введите имя одного из них (например, ' + memberNames.join(' или ') + '), чтобы войти.');
-    }
-    // Имя совпадает — продолжаем, claim_couple_seat заберёт место.
-  }
-
-  if (!session) {
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw new Error('Ошибка авторизации: ' + error.message);
-    if (!data?.session) throw new Error('Не удалось создать сессию. Проверь что Anonymous Sign-In включён в Supabase.');
-    session = data.session;
-  }
-
-  // Используем claim_couple_seat: если в паре уже есть участник с таким именем,
-  // забираем его место (имя+ключ работают как login/password при восстановлении доступа).
-  const { data: couple, error: rpcError } = await supabase.rpc('claim_couple_seat', {
-    p_invite_code: code,
-    p_display_name: canonicalName || 'Пользователь',
-  });
-  if (rpcError) {
-    if (rpcError.message?.includes('couple is full')) {
-      throw new Error('В этой паре уже два участника с другими именами. Введите имя одного из них, чтобы войти.');
-    }
-    if (rpcError.message?.includes('invite code not found')) {
-      throw new Error('Код не найден');
-    }
-    if (rpcError.message?.includes('name required')) {
-      throw new Error('Введите имя');
-    }
-    throw new Error('Не удалось присоединиться: ' + rpcError.message);
-  }
-  if (!couple) throw new Error('Код не найден');
-
-  localStorage.setItem('ce_invite_code', code);
-  localStorage.setItem('ce_display_name', displayName || 'Пользователь');
-
-  return couple;
 }
 
 export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    persistSession(session);
-    return session;
-  }
-
-  const fallbackSession = readPersistedSession();
-  if (!fallbackSession) return null;
-
-  try {
-    const { data, error } = await supabase.auth.setSession(fallbackSession);
-    if (error) {
-      clearPersistedSession();
-      return null;
-    }
-    if (data?.session) {
-      persistSession(data.session);
-      return data.session;
-    }
-    clearPersistedSession();
-    return null;
-  } catch {
-    clearPersistedSession();
-    return null;
-  }
+  return session;
 }
 
 export async function ensureAuthenticated() {
   const session = await getSession();
-  if (session) {
-    const profile = await getProfile();
-    if (profile?.couple_id) return { session, profile };
-  }
-
-  const savedCode = localStorage.getItem('ce_invite_code');
-  const savedName = localStorage.getItem('ce_display_name');
-  if (!savedCode) return null;
-
-  try {
-    const couple = await authWithInviteCode(savedCode, savedName || 'User');
-    const newSession = await getSession();
-    if (!newSession) return null;
-    const profile = await getProfile();
-    if (profile?.couple_id) {
-      return { session: newSession, profile, couple: profile.couples || couple };
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  if (!session) return null;
+  const profile = await getProfile();
+  return { session, profile };
 }
 
 export async function getProfile() {
@@ -223,14 +111,25 @@ export async function createCouple(name = 'Our Budget') {
   return couple;
 }
 
-export async function joinCouple(inviteCode) {
+export async function joinCouple(inviteCode, displayName) {
+  const { data: couple, error } = await supabase.rpc('join_couple_by_invite', {
+    p_invite_code: inviteCode.trim(),
+    p_display_name: displayName || 'Пользователь',
+  });
+  if (error) {
+    if (error.message?.includes('couple is full')) throw new Error('В этой паре уже два участника');
+    if (error.message?.includes('invite code not found')) throw new Error('Код не найден');
+    throw new Error('Не удалось присоединиться: ' + error.message);
+  }
+  if (!couple) throw new Error('Код не найден');
+  return couple;
+}
+
+export async function updateDisplayName(name) {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('display_name')
-    .eq('id', user.id)
-    .maybeSingle();
-  return authWithInviteCode(inviteCode, profile?.display_name || 'User');
+  if (!user) throw new Error('not authenticated');
+  const { error } = await supabase.from('profiles').update({ display_name: name }).eq('id', user.id);
+  if (error) throw error;
 }
 
 // ---- Expense helpers ----

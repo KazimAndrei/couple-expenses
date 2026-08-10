@@ -1,0 +1,8 @@
+{
+  "appId": "com.kazimandrei.coupleexpenses",
+  "appName": "CoupleExpenses",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

@@ -15,8 +15,13 @@ export function getCurrentPath() {
   return window.location.hash.slice(1) || '/';
 }
 
+export function getQueryParam(name) {
+  const query = getCurrentPath().split('?')[1] || '';
+  return new URLSearchParams(query).get(name);
+}
+
 async function handleRoute() {
-  const path = getCurrentPath();
+  const path = getCurrentPath().split('?')[0];
   diagStep(`route: ${path}`);
   const app = document.getElementById('app');
   if (currentCleanup) {

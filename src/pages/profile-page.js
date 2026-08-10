@@ -239,7 +239,6 @@ export function registerProfileRoute() {
         try {
           const { error } = await supabase.from('profiles').update({ display_name: name }).eq('id', state.profile.id);
           if (error) throw error;
-          localStorage.setItem('ce_display_name', name);
           const refreshed = await getProfile();
           setState({ profile: refreshed });
           backdrop.remove();
@@ -251,16 +250,19 @@ export function registerProfileRoute() {
     document.getElementById('btn-remove-avatar')?.addEventListener('click', async () => {
       await removeAvatar(state.profile.id);
     });
-    document.getElementById('btn-invite')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(state.couple.invite_code)
-        .then(() => showToast('Код скопирован'))
-        .catch(() => showToast(state.couple.invite_code));
+    document.getElementById('btn-invite')?.addEventListener('click', async () => {
+      const inviteLink = `${window.location.origin}/#/invite?code=${state.couple.invite_code}`;
+      if (navigator.share) {
+        try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре', url: inviteLink }); } catch { /* отменили шаринг */ }
+      } else {
+        navigator.clipboard.writeText(inviteLink)
+          .then(() => showToast('Ссылка скопирована'))
+          .catch(() => showToast(state.couple.invite_code));
+      }
     });
     document.getElementById('btn-settings')?.addEventListener('click', showCoupleSettingsModal);
     document.getElementById('btn-logout').onclick = async () => {
       await signOut();
-      localStorage.removeItem('ce_invite_code');
-      localStorage.removeItem('ce_display_name');
       setState({ user: null, profile: null, couple: null });
       navigate('/auth');
     };
