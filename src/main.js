@@ -24,6 +24,7 @@ registerProfileRoute();
 function renderBootLoader(app) {
   app.innerHTML = `
     <div class="loading boot-video-wrap">
+      <video class="boot-video-bg" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
       <video class="boot-video" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
     </div>
   `;
@@ -52,8 +53,16 @@ function withTimeout(promise, timeoutMs, label) {
 }
 
 // ---- INIT ----
+// Видео-заставка: 4s при входе в дашборд (залогинен), 2.2s перед экраном логина
+const BOOT_SPLASH_LOGGED_IN_MS = 4000;
+const BOOT_SPLASH_AUTH_MS = 2200;
+
 async function init() {
   const app = document.getElementById('app');
+  const bootStart = Date.now();
+  const minBootSplash = (minMs) => new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, minMs - (Date.now() - bootStart)));
+  });
   renderBootLoader(app);
   diagStep('init: start');
   let bootFallbackShown = false;
@@ -75,12 +84,13 @@ async function init() {
     }
   });
 
-  diagStep('init: router start');
-  startRouter();
-
   try {
     diagStep('init: reading session');
     const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
+    // Роутер стартует только после минимального окна заставки — иначе он сразу перерисует экран
+    await minBootSplash(result?.profile?.couple_id ? BOOT_SPLASH_LOGGED_IN_MS : BOOT_SPLASH_AUTH_MS);
+    diagStep('init: router start');
+    startRouter();
     if (result?.profile?.couple_id) {
       diagStep('init: authenticated');
       setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || null, currentMonth: currentMonth(), loading: false });
@@ -103,6 +113,7 @@ async function init() {
       renderBootFallback(app);
       return;
     }
+    startRouter();
     navigate('/auth');
   } finally {
     clearTimeout(bootFallbackTimer);

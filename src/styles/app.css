@@ -252,8 +252,10 @@ select.form-input { cursor:pointer; }
 .auth-divider::before, .auth-divider::after { content:''; flex:1; height:1px; background:var(--c-border-strong); }
 .btn-google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:14px; border-radius:var(--radius-sm); border:1px solid var(--c-border-strong); background:var(--c-surface); font-size:16px; font-weight:500; font-family:var(--font); cursor:pointer; color:var(--c-text); transition:background 0.15s; }
 .btn-google:active { background:var(--c-surface-alt); }
-.boot-video-wrap { position:fixed; inset:0; background:var(--c-bg); }
-.boot-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.boot-video-wrap { position:fixed; inset:0; background:var(--c-bg); overflow:hidden; }
+/* Размытая копия видео заполняет леттербокс — чёрных полей нет, кадр целиком виден в переднем слое */
+.boot-video-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:blur(36px) brightness(0.92); transform:scale(1.18); }
+.boot-video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
 
 .btn-apple { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:14px; border-radius:var(--radius-sm); border:none; background:#000; font-size:16px; font-weight:600; font-family:var(--font); cursor:pointer; color:#fff; transition:opacity 0.15s; }
 .btn-apple:active { opacity:0.8; }

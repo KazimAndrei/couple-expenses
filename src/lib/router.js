@@ -52,7 +52,11 @@ async function handleRoute() {
   }
 }
 
+let routerStarted = false;
+
 export function startRouter() {
+  if (routerStarted) { handleRoute(); return; }
+  routerStarted = true;
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
 }
