@@ -84,10 +84,62 @@ async function maybeGoalReachedPush(db: Db, goalId: string, coupleId: string, cu
   );
 }
 
+const MONTHS_RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+
+function monthRange(monthKey: string): { start: string; end: string } {
+  const [y, m] = monthKey.split("-").map(Number);
+  const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  return { start: `${monthKey}-01`, end };
+}
+
+// Сумма обычных трат пары за месяц (накопления в цели не считаются)
+async function monthSpend(db: Db, coupleId: string, monthKey: string, categoryId?: string): Promise<number> {
+  const { start, end } = monthRange(monthKey);
+  let q = db.from("expenses")
+    .select("id, amount, goal_contributions(goal_id)")
+    .eq("couple_id", coupleId)
+    .gte("expense_date", start)
+    .lt("expense_date", end);
+  if (categoryId) q = q.eq("category_id", categoryId);
+  const { data } = await q;
+  return (data ?? [])
+    .filter((r) => !(r.goal_contributions as unknown[] | null)?.length)
+    .reduce((s, r) => s + Number(r.amount), 0);
+}
+
+// Пуш при пересечении 80%/100% бюджета категории этим расходом
+async function maybeBudgetAlert(db: Db, expense: { couple_id: string; category_id: string | null; amount: number; expense_date: string; currency: string }, categoryName?: string) {
+  if (!expense.category_id) return [];
+  const monthKey = String(expense.expense_date).slice(0, 7);
+  const { data: budget } = await db
+    .from("budgets").select("limit_amount")
+    .eq("couple_id", expense.couple_id)
+    .eq("category_id", expense.category_id)
+    .eq("month", `${monthKey}-01`)
+    .maybeSingle();
+  if (!budget) return [];
+  const limit = Number(budget.limit_amount);
+  if (!limit) return [];
+  const spent = await monthSpend(db, expense.couple_id, monthKey, expense.category_id);
+  const before = (spent - Number(expense.amount)) / limit;
+  const after = spent / limit;
+  let title = "";
+  if (before < 1 && after >= 1) title = `Бюджет «${categoryName ?? "категория"}» исчерпан`;
+  else if (before < 0.8 && after >= 0.8) title = `Бюджет «${categoryName ?? "категория"}»: 80%`;
+  else return [];
+  const members = await coupleMembers(db, expense.couple_id);
+  return await sendToUsers(
+    db, members.map((m) => m.id),
+    title,
+    `Потрачено ${formatAmount(spent, expense.currency)} из ${formatAmount(limit, expense.currency)}`,
+    { budget_category_id: expense.category_id },
+  );
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
 
-  let body: { expense_id?: string; contribution_id?: string };
+  let body: { expense_id?: string; contribution_id?: string; monthly_summary_couple_id?: string; month?: string };
   try {
     body = await req.json();
   } catch {
@@ -98,6 +150,46 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // ---- Итоги месяца (pg_cron, 1-го числа за прошлый месяц) ----
+  if (body.monthly_summary_couple_id && body.month) {
+    const coupleId = body.monthly_summary_couple_id;
+    const monthKey = body.month;
+    const { data: couple } = await db.from("couples").select("currency").eq("id", coupleId).maybeSingle();
+    if (!couple) return new Response("couple not found", { status: 404 });
+
+    const [y, m] = monthKey.split("-").map(Number);
+    const prevKey = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+    const spent = await monthSpend(db, coupleId, monthKey);
+    const prevSpent = await monthSpend(db, coupleId, prevKey);
+
+    const { start, end } = monthRange(monthKey);
+    const { data: contribs } = await db
+      .from("goal_contributions")
+      .select("amount, created_at, goals!inner(couple_id)")
+      .eq("goals.couple_id", coupleId)
+      .gte("created_at", start)
+      .lt("created_at", end);
+    const saved = (contribs ?? []).reduce((s, r) => s + Number(r.amount), 0);
+
+    if (spent === 0 && saved === 0) return new Response("nothing to report", { status: 200 });
+
+    const monthName = MONTHS_RU[m - 1] ?? monthKey;
+    const trend = prevSpent > 0
+      ? ` (${spent >= prevSpent ? "+" : "−"}${Math.abs(Math.round((spent / prevSpent - 1) * 100))}% к прошлому)`
+      : "";
+    const parts = [`потрачено ${formatAmount(spent, couple.currency)}${trend}`];
+    if (saved > 0) parts.push(`отложено ${formatAmount(saved, couple.currency)}`);
+
+    const members = await coupleMembers(db, coupleId);
+    const sent = await sendToUsers(
+      db, members.map((mm) => mm.id),
+      `Итоги: ${monthName}`,
+      parts.join(" · "),
+      { monthly_summary: monthKey },
+    );
+    return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
+  }
 
   // ---- Пополнение цели напрямую (без расхода) ----
   if (body.contribution_id) {
@@ -131,7 +223,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: expense } = await db
     .from("expenses")
-    .select("id, couple_id, paid_by, paid_by_snapshot_name, amount, currency, description, created_at, categories(name), goal_contributions(goal_id, goals(id, name))")
+    .select("id, couple_id, paid_by, paid_by_snapshot_name, amount, currency, description, created_at, category_id, expense_date, categories(name), goal_contributions(goal_id, goals(id, name))")
     .eq("id", body.expense_id)
     .maybeSingle();
   if (!expense) return new Response("expense not found", { status: 404 });
@@ -161,5 +253,6 @@ Deno.serve(async (req: Request) => {
     [payer, category, expense.description].filter(Boolean).join(" · "),
     { expense_id: expense.id },
   );
-  return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
+  const budgetAlert = await maybeBudgetAlert(db, expense as never, category);
+  return new Response(JSON.stringify({ sent, budgetAlert }), { headers: { "Content-Type": "application/json" } });
 });

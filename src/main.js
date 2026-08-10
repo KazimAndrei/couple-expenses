@@ -6,6 +6,10 @@ import { currentMonth } from './lib/utils.js';
 import { registerServiceWorker } from './services/pwa.js';
 import { initNativePush } from './services/native-push.js';
 import { initTheme } from './services/theme.js';
+import { isBiometricEnabled, unlockWithBiometrics } from './services/biometric.js';
+import { flushQueue } from './services/offline-queue.js';
+import { loadExpenses } from './services/data-loader.js';
+import { showToast } from './services/toast.js';
 import { exposeToastGlobally } from './services/toast.js';
 import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
 import { t } from './lib/i18n.js';
@@ -40,6 +44,32 @@ function renderBootFallback(app) {
   document.getElementById('btn-restart-app')?.addEventListener('click', () => {
     window.location.reload();
   });
+}
+
+// Face ID-гейт: не пускаем дальше заставки, пока не пройдена биометрия
+async function ensureUnlocked(app) {
+  if (!isBiometricEnabled()) return;
+  let ok = await unlockWithBiometrics(t('boot.locked'));
+  while (!ok) {
+    await new Promise((resolve) => {
+      app.innerHTML = `
+        <div class="loading-fallback">
+          <div class="loading-fallback-title">${t('boot.locked')}</div>
+          <button class="btn btn-primary" id="btn-unlock" style="max-width: 280px;">${t('boot.unlock')}</button>
+        </div>
+      `;
+      document.getElementById('btn-unlock').onclick = resolve;
+    });
+    ok = await unlockWithBiometrics(t('boot.locked'));
+  }
+}
+
+async function syncOfflineQueue() {
+  const sent = await flushQueue();
+  if (sent > 0) {
+    showToast(t('home.offlineSynced'));
+    try { await loadExpenses(); } catch { /* подтянется при следующем рендере */ }
+  }
 }
 
 function withTimeout(promise, timeoutMs, label) {
@@ -93,6 +123,7 @@ async function init() {
     clearTimeout(bootFallbackTimer);
     // Роутер стартует только после минимального окна заставки — иначе он сразу перерисует экран
     await minBootSplash(result?.profile?.couple_id ? BOOT_SPLASH_LOGGED_IN_MS : BOOT_SPLASH_AUTH_MS);
+    if (result) await ensureUnlocked(app);
     diagStep('init: router start');
     startRouter();
     if (result?.profile?.couple_id) {
@@ -100,6 +131,7 @@ async function init() {
       setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || null, currentMonth: currentMonth(), loading: false });
       initNativePush();
       navigate('/');
+      syncOfflineQueue();
     } else if (result) {
       diagStep('init: authenticated, no couple');
       setState({ user: result.session.user, profile: result.profile, loading: false });
@@ -130,6 +162,7 @@ function setupOfflineBanner() {
   banner.textContent = t('boot.offline');
   document.body.appendChild(banner);
   const update = () => banner.classList.toggle('visible', !navigator.onLine);
+  window.addEventListener('online', () => syncOfflineQueue());
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
   update();

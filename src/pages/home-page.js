@@ -1,6 +1,7 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
+import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt } from '../lib/supabase.js';
+import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
@@ -141,9 +142,26 @@ async function showAddExpenseModal() {
           }).join('')}
         </div>
       </div>
+      <div class="form-group" id="split-block" style="display:${!defaultPayerId || defaultPayerId === 'shared' ? 'none' : 'block'};">
+        <label class="form-label">${t('home.splitLabel')}</label>
+        <div class="payer-options" style="flex-wrap:wrap;">
+          <div class="payer-option split-option selected" data-split="full_payer"><span id="split-payer-label">${t('home.splitFullPayer', { name: '…' })}</span></div>
+          <div class="payer-option split-option" data-split="equal"><span>${t('home.splitEqual')}</span></div>
+          <div class="payer-option split-option" data-split="custom"><span>${t('home.splitCustom')}</span></div>
+        </div>
+        <div id="split-pct-wrap" style="display:none; margin-top:8px;">
+          <label class="form-label">${t('home.splitCustomPct')}</label>
+          <input type="number" class="form-input" id="split-pct" min="1" max="99" step="1" value="70" inputmode="numeric">
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">${t('common.date')}</label>
         <input type="date" class="form-input" id="exp-date" value="${defaultDate}">
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="btn btn-secondary btn-small" id="btn-attach-receipt">${t('home.attachReceipt')}</button>
+        <span id="receipt-name" style="font-size:12px; color:var(--c-text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+        <input type="file" id="receipt-input" accept="image/*" style="display:none;">
       </div>
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
@@ -232,12 +250,39 @@ async function showAddExpenseModal() {
       opt.classList.add('selected');
     });
   });
-  backdrop.querySelectorAll('.payer-option').forEach(opt => {
+  const splitBlock = document.getElementById('split-block');
+  const splitPctWrap = document.getElementById('split-pct-wrap');
+  const updateSplitBlock = () => {
+    const payerEl = backdrop.querySelector('.payer-option:not(.split-option).selected');
+    const member = payerMembers.find((m) => m.id === payerEl?.dataset.id);
+    splitBlock.style.display = member ? 'block' : 'none';
+    if (member) {
+      document.getElementById('split-payer-label').textContent = t('home.splitFullPayer', { name: memberDisplayLabel(member) });
+    }
+  };
+  backdrop.querySelectorAll('.payer-option:not(.split-option)').forEach(opt => {
     opt.addEventListener('click', () => {
-      backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
+      backdrop.querySelectorAll('.payer-option:not(.split-option)').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
+      updateSplitBlock();
     });
   });
+  backdrop.querySelectorAll('.split-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      backdrop.querySelectorAll('.split-option').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      splitPctWrap.style.display = opt.dataset.split === 'custom' ? 'block' : 'none';
+    });
+  });
+  updateSplitBlock();
+
+  const receiptInput = document.getElementById('receipt-input');
+  document.getElementById('btn-attach-receipt').addEventListener('click', () => receiptInput.click());
+  receiptInput.addEventListener('change', () => {
+    const f = receiptInput.files?.[0];
+    document.getElementById('receipt-name').textContent = f ? t('home.receiptAttached', { name: f.name }) : '';
+  });
+
   const goalSelect = document.getElementById('exp-goal');
   goalSelect?.addEventListener('change', () => {
     const goal = goals.find((g) => g.id === goalSelect.value);
@@ -260,40 +305,76 @@ async function showAddExpenseModal() {
     const amount = parseFloat(document.getElementById('exp-amount').value);
     const description = document.getElementById('exp-desc').value.trim();
     const categoryEl = backdrop.querySelector('.cat-option.selected:not(#btn-add-category)');
-    const payerEl = backdrop.querySelector('.payer-option.selected');
+    const payerEl = backdrop.querySelector('.payer-option:not(.split-option).selected');
     const date = document.getElementById('exp-date').value;
     const recurring = document.getElementById('exp-recurring').checked;
     const goalId = goalSelect?.value || null;
     if (!amount || amount <= 0) { showToast(t('common.enterAmount')); return; }
     if (!description && !goalId) { showToast(t('home.enterDescription')); return; }
+
+    const isShared = payerEl?.dataset.id === 'shared';
+    const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
+    // Деление: у «Общего» всегда пополам; у участника — выбранный вариант
+    let split = 'equal';
+    let splitPct = 50;
+    if (!isShared) {
+      split = backdrop.querySelector('.split-option.selected')?.dataset.split || 'full_payer';
+      if (split === 'custom') {
+        splitPct = Math.min(99, Math.max(1, Math.round(parseFloat(document.getElementById('split-pct').value) || 50)));
+      }
+    }
+
+    // Чек грузим до создания расхода; его отсутствие — не повод терять запись
+    let receiptUrl = null;
+    const receiptFile = receiptInput.files?.[0];
+    if (receiptFile) {
+      try {
+        receiptUrl = await uploadReceipt(receiptFile, couple.id);
+      } catch (upErr) {
+        showToast(t('common.error', { msg: getReadableError(upErr) }));
+      }
+    }
+
+    const expensePayload = {
+      couple_id: couple.id,
+      category_id: categoryEl?.dataset.id,
+      paid_by: paidById,
+      amount,
+      description,
+      split,
+      split_payer_pct: splitPct,
+      expense_date: date,
+      currency: couple.currency || 'THB',
+      receipt_url: receiptUrl,
+    };
+
     let created = null;
     try {
-      const isShared = payerEl?.dataset.id === 'shared';
-      const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
       if (goalId) {
         created = await addExpenseToGoal({
           goal_id: goalId,
           amount,
           paid_by: paidById,
-          split: isShared ? 'equal' : 'full_payer',
+          split: isShared ? 'equal' : split,
           expense_date: date,
           description,
         });
         // RPC возвращает голую строку expenses — доклеиваем связь для optimistic-рендера как накопления
         created.goal_contributions = [{ goal_id: goalId, goals: { name: goals.find((g) => g.id === goalId)?.name || description } }];
+        if (receiptUrl) {
+          try { created = { ...created, ...(await updateExpense(created.id, { receipt_url: receiptUrl })) }; } catch { /* чек не критичен */ }
+        }
       } else {
-        created = await addExpense({
-          couple_id: couple.id,
-          category_id: categoryEl?.dataset.id,
-          paid_by: paidById,
-          amount,
-          description,
-          split: isShared ? 'equal' : 'full_payer',
-          expense_date: date,
-          currency: couple.currency || 'THB',
-        });
+        created = await addExpense(expensePayload);
       }
     } catch (err) {
+      if (!goalId && isNetworkError(err)) {
+        // Нет сети: кладём в очередь, отправится при появлении соединения
+        enqueueExpense(expensePayload);
+        backdrop.remove();
+        showToast(t('home.savedOffline'));
+        return;
+      }
       showToast(t('common.error', { msg: getReadableError(err) }));
       return;
     }
@@ -312,15 +393,14 @@ async function showAddExpenseModal() {
 
     if (recurring && !goalId) {
       try {
-        const isShared = payerEl?.dataset.id === 'shared';
-        const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
         await createRecurringExpense({
           couple_id: couple.id,
           category_id: categoryEl?.dataset.id,
           paid_by: paidById,
           amount,
           description,
-          split: isShared ? 'equal' : 'full_payer',
+          split,
+          split_payer_pct: splitPct,
           currency: couple.currency || 'THB',
           day_of_month: Number(date.slice(8, 10)),
         });
@@ -427,6 +507,7 @@ function showExpenseActionsModal(expense, app) {
     <div class="modal-sheet">
       <div class="modal-handle"></div>
       <div class="modal-title">${e(expense.description)}</div>
+      ${expense.receipt_url ? `<button class="btn btn-secondary" id="btn-view-receipt" style="margin-bottom: 8px;">${t('home.viewReceipt')}</button>` : ''}
       <button class="btn btn-secondary" id="btn-edit-expense">${t('common.edit')}</button>
       <button class="btn btn-secondary" id="btn-duplicate-expense" style="margin-top: 8px;">${t('home.duplicate')}</button>
       <button class="btn btn-danger" id="btn-delete-expense" style="margin-top: 8px;">${t('common.delete')}</button>
@@ -506,6 +587,9 @@ function showExpenseActionsModal(expense, app) {
     };
   };
 
+  document.getElementById('btn-view-receipt')?.addEventListener('click', () => {
+    window.open(expense.receipt_url, '_blank');
+  });
   document.getElementById('btn-edit-expense').onclick = openEdit;
   document.getElementById('btn-duplicate-expense').onclick = async () => {
     try {
@@ -558,6 +642,36 @@ function computeCoupleDebt(sides) {
   return net > 0
     ? { from: memberB, to: memberA, amount: net }
     : { from: memberA, to: memberB, amount: -net };
+}
+
+function showSettlementsModal(sides, couple) {
+  const { settlements = [] } = getState();
+  const nameOf = (id) => {
+    const m = [sides.memberA, sides.memberB].find((x) => x?.id === id);
+    return m ? memberDisplayLabel(m) : t('common.partner');
+  };
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+  backdrop.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">${t('home.settlementsTitle')}</div>
+      ${settlements.length === 0
+        ? `<p style="font-size:14px; color:var(--c-text-secondary);">${t('home.noSettlements')}</p>`
+        : settlements.map((s) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--c-border);">
+            <div>
+              <div style="font-size:14px;">${e(nameOf(s.settled_by))}</div>
+              <div style="font-size:12px; color:var(--c-text-secondary);">${formatDateTime(s.settled_at)}</div>
+            </div>
+            <strong>${formatMoney(s.amount, couple?.currency)}</strong>
+          </div>
+        `).join('')}
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  enableModalSwipe(backdrop);
 }
 
 function renderBalanceCard(sides, couple) {
@@ -681,7 +795,7 @@ function renderHome(app) {
                 <div class="tx-item">
                   <div class="tx-icon" style="background: ${bgColor}">${icon(cat?.icon || 'more-horizontal', 18, catColor)}</div>
                   <div class="tx-info">
-                    <div class="tx-name">${e(exp.description)}</div>
+                    <div class="tx-name">${e(exp.description)}${exp.receipt_url ? ' 📎' : ''}</div>
                     <div class="tx-cat">${e(cat?.name || t('common.other'))}</div>
                     ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
                   </div>
@@ -696,6 +810,10 @@ function renderHome(app) {
     ${renderTabBar()}
   `;
   document.getElementById('add-exp-btn').onclick = showAddExpenseModal;
+  document.querySelector('.balance-card')?.addEventListener('click', (ev) => {
+    if (ev.target.closest('#btn-settle-up')) return; // кнопка расчёта — отдельное действие
+    showSettlementsModal(sides, couple);
+  });
   document.getElementById('btn-settle-up')?.addEventListener('click', async () => {
     const debt = computeCoupleDebt(resolveMemberSides(getState().members));
     if (!debt) return;

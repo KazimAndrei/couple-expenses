@@ -2,6 +2,9 @@ import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
+import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
+import { clearQueue } from '../services/offline-queue.js';
+import { Capacitor } from '@capacitor/core';
 import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
 import { LANG_LABELS, getLang, setLang, t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
@@ -151,6 +154,7 @@ function showCoupleSettingsModal() {
             `<option value="${code}" ${couple.currency === code ? 'selected' : ''}>${code} (${sym}) — ${currencyName(code)}</option>`
           ).join('')}
         </select>
+        <p style="font-size:12px; color:var(--c-text-secondary); margin-top:6px;">${t('profile.currencyChangeWarning')}</p>
       </div>
       <div class="form-group">
         <label class="form-label">${t('profile.partnerInviteCode')}</label>
@@ -217,6 +221,9 @@ export function registerProfileRoute() {
           ` : ''}
           <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>${t('profile.themeLabel')} <strong id="theme-current">${themeLabel(getThemePref())}</strong></span></div>
           <div class="profile-menu-item" id="btn-lang">${icon('globe', 20)}<span>${t('profile.languageLabel')} <strong id="lang-current">${LANG_LABELS[getLang()]}</strong></span></div>
+          ${Capacitor.isNativePlatform() ? `
+            <div class="profile-menu-item" id="btn-biometric">${icon('lock', 20)}<span>${t('profile.biometricLabel')} <strong id="biometric-current">${isBiometricEnabled() ? t('common.on') : t('common.off')}</strong></span></div>
+          ` : ''}
           ${state.couple ? `<div class="profile-menu-item" id="btn-export-csv">${icon('copy', 20)}<span>${t('profile.exportCsv')}</span></div>` : ''}
           <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>${t('profile.logout')}</span></div>
           <div class="profile-menu-item danger" id="btn-delete-account">${icon('x', 20)}<span>${t('profile.deleteAccount')}</span></div>
@@ -317,6 +324,7 @@ export function registerProfileRoute() {
               ).join('')}
             </select>
           </div>
+          <p style="font-size:12px; color:var(--c-text-secondary); margin-bottom:12px;">${t('profile.currencyChangeWarning')}</p>
           <button class="btn btn-primary" id="btn-save-currency">${t('common.save')}</button>
         </div>
       `;
@@ -336,6 +344,20 @@ export function registerProfileRoute() {
           showToast(t('common.error', { msg: getReadableError(err) }));
         }
       };
+    });
+    document.getElementById('btn-biometric')?.addEventListener('click', async () => {
+      const label = document.getElementById('biometric-current');
+      if (isBiometricEnabled()) {
+        setBiometricEnabled(false);
+        label.textContent = t('common.off');
+        return;
+      }
+      // Включаем только после успешной проверки Face ID — иначе можно запереть самого себя
+      const ok = await unlockWithBiometrics(t('boot.locked'));
+      if (ok) {
+        setBiometricEnabled(true);
+        label.textContent = t('common.on');
+      }
     });
     document.getElementById('btn-lang')?.addEventListener('click', () => {
       const backdrop = document.createElement('div');
@@ -423,6 +445,8 @@ export function registerProfileRoute() {
     });
     document.getElementById('btn-logout').onclick = async () => {
       await signOut();
+      localStorage.removeItem('ce_data_cache_v1');
+      clearQueue();
       setState({ user: null, profile: null, couple: null });
       navigate('/auth');
     };

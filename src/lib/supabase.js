@@ -402,10 +402,21 @@ export async function getBalance(coupleId) {
 export async function getSettlements(coupleId) {
   const { data, error } = await supabase
     .from('settlements')
-    .select('settled_by, amount')
-    .eq('couple_id', coupleId);
+    .select('settled_by, amount, note, settled_at')
+    .eq('couple_id', coupleId)
+    .order('settled_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+// ---- Receipts ----
+export async function uploadReceipt(file, coupleId) {
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${coupleId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('receipts').upload(path, file, { contentType: file.type || 'image/jpeg' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+  return data?.publicUrl || null;
 }
 
 // ---- Settlement helpers ----
