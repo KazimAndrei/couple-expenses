@@ -88,6 +88,9 @@ async function init() {
   try {
     diagStep('init: reading session');
     const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
+    // Данные получены — fallback «долго загружается» больше не нужен,
+    // иначе он сработает поверх намеренно удерживаемой заставки
+    clearTimeout(bootFallbackTimer);
     // Роутер стартует только после минимального окна заставки — иначе он сразу перерисует экран
     await minBootSplash(result?.profile?.couple_id ? BOOT_SPLASH_LOGGED_IN_MS : BOOT_SPLASH_AUTH_MS);
     diagStep('init: router start');
