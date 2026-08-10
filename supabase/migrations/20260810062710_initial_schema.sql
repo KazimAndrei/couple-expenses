@@ -1,0 +1,343 @@
+-- CoupleExpenses — Supabase Schema
+create extension if not exists "uuid-ossp";
+
+create table public.couples (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null default 'Our Budget',
+  currency text not null default 'THB',
+  invite_code text unique default encode(gen_random_bytes(6), 'hex'),
+  created_at timestamptz not null default now()
+);
+
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  couple_id uuid references public.couples(id) on delete set null,
+  display_name text not null default '',
+  avatar_url text,
+  created_at timestamptz not null default now()
+);
+
+create table public.categories (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  name text not null,
+  icon text not null default 'receipt',
+  color text not null default '#888780',
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create type split_type as enum ('equal', 'custom', 'full_payer', 'full_other');
+
+create table public.expenses (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  category_id uuid references public.categories(id) on delete set null,
+  paid_by uuid references public.profiles(id) on delete set null,
+  paid_by_snapshot_name text,
+  amount numeric(12,2) not null check (amount > 0),
+  currency text not null default 'THB',
+  description text not null,
+  split split_type not null default 'equal',
+  split_payer_pct numeric(5,2) not null default 50.00,
+  expense_date date not null default current_date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.budgets (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  category_id uuid not null references public.categories(id) on delete cascade,
+  month date not null,
+  limit_amount numeric(12,2) not null check (limit_amount > 0),
+  created_at timestamptz not null default now(),
+  unique(couple_id, category_id, month)
+);
+
+create table public.goals (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  name text not null,
+  target_amount numeric(12,2) not null check (target_amount > 0),
+  current_amount numeric(12,2) not null default 0 check (current_amount >= 0),
+  icon text not null default 'target',
+  deadline date,
+  completed boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table public.goal_contributions (
+  id uuid primary key default uuid_generate_v4(),
+  goal_id uuid not null references public.goals(id) on delete cascade,
+  contributed_by uuid references public.profiles(id) on delete set null,
+  amount numeric(12,2) not null check (amount > 0),
+  created_at timestamptz not null default now()
+);
+
+create table public.push_subscriptions (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  endpoint text not null,
+  keys_p256dh text not null,
+  keys_auth text not null,
+  created_at timestamptz not null default now(),
+  unique(user_id, endpoint)
+);
+
+create table public.settlements (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  settled_by uuid references public.profiles(id) on delete set null,
+  amount numeric(12,2) not null check (amount > 0),
+  note text,
+  settled_at timestamptz not null default now()
+);
+
+create table public.recurring_expenses (
+  id uuid primary key default uuid_generate_v4(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  category_id uuid references public.categories(id) on delete set null,
+  paid_by uuid references public.profiles(id) on delete set null,
+  paid_by_snapshot_name text,
+  amount numeric(12,2) not null check (amount > 0),
+  currency text not null default 'THB',
+  description text not null,
+  split split_type not null default 'equal',
+  split_payer_pct numeric(5,2) not null default 50.00,
+  day_of_month int not null check (day_of_month between 1 and 31),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create index idx_expenses_couple_date on public.expenses(couple_id, expense_date desc);
+create index idx_expenses_category on public.expenses(category_id);
+create index idx_expenses_paid_by on public.expenses(paid_by);
+create index idx_budgets_couple_month on public.budgets(couple_id, month);
+create index idx_goals_couple on public.goals(couple_id);
+create index idx_goal_contributions_goal on public.goal_contributions(goal_id);
+create index idx_recurring_expenses_couple on public.recurring_expenses(couple_id);
+
+alter table public.profiles enable row level security;
+alter table public.couples enable row level security;
+alter table public.categories enable row level security;
+alter table public.expenses enable row level security;
+alter table public.budgets enable row level security;
+alter table public.goals enable row level security;
+alter table public.goal_contributions enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.settlements enable row level security;
+alter table public.recurring_expenses enable row level security;
+
+create or replace function public.my_couple_id()
+returns uuid language sql security definer stable as $$
+  select couple_id from public.profiles where id = auth.uid()
+$$;
+
+create or replace function public.join_couple_by_invite(p_invite_code text, p_display_name text default 'Пользователь')
+returns public.couples
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_couple public.couples;
+  v_current_couple_id uuid;
+  v_other_member_count int;
+begin
+  if v_user_id is null then
+    raise exception 'not authenticated';
+  end if;
+  select * into v_couple from public.couples where invite_code = p_invite_code limit 1;
+  if v_couple.id is null then
+    raise exception 'invite code not found';
+  end if;
+  select couple_id into v_current_couple_id from public.profiles where id = v_user_id;
+  if v_current_couple_id = v_couple.id then
+    return v_couple;
+  end if;
+  select count(*)::int into v_other_member_count
+  from public.profiles where couple_id = v_couple.id and id != v_user_id;
+  if v_other_member_count >= 2 then
+    raise exception 'couple is full';
+  end if;
+  update public.profiles
+  set couple_id = v_couple.id,
+      display_name = case
+        when display_name in ('', 'User', 'Пользователь') then coalesce(nullif(p_display_name, ''), display_name)
+        else display_name
+      end
+  where id = v_user_id;
+  return v_couple;
+end;
+$$;
+grant execute on function public.join_couple_by_invite(text, text) to authenticated;
+
+create or replace function public.check_invite_capacity(p_invite_code text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_couple_id uuid;
+  v_member_count int;
+  v_user_id uuid := auth.uid();
+  v_user_in_couple boolean;
+begin
+  select id into v_couple_id from public.couples where invite_code = p_invite_code limit 1;
+  if v_couple_id is null then
+    return jsonb_build_object('found', false);
+  end if;
+  select count(*)::int into v_member_count from public.profiles where couple_id = v_couple_id;
+  v_user_in_couple := (
+    v_user_id is not null and exists (
+      select 1 from public.profiles where id = v_user_id and couple_id = v_couple_id
+    )
+  );
+  return jsonb_build_object(
+    'found', true,
+    'member_count', v_member_count,
+    'full', v_member_count >= 2 and not v_user_in_couple,
+    'user_in_couple', v_user_in_couple
+  );
+end;
+$$;
+grant execute on function public.check_invite_capacity(text) to anon, authenticated;
+
+create policy "Users can view own profile" on public.profiles for select using (id = auth.uid());
+create policy "Users can view partner" on public.profiles for select using (couple_id = public.my_couple_id() and public.my_couple_id() is not null);
+create policy "Users can update own profile" on public.profiles for update using (id = auth.uid());
+create policy "Users can insert own profile" on public.profiles for insert with check (id = auth.uid());
+
+create policy "View own couple" on public.couples for select using (id = public.my_couple_id());
+create policy "Update own couple" on public.couples for update using (id = public.my_couple_id());
+create policy "Create couple" on public.couples for insert with check (auth.uid() is not null);
+
+create policy "View categories" on public.categories for select using (couple_id = public.my_couple_id());
+create policy "Insert categories" on public.categories for insert with check (couple_id = public.my_couple_id());
+create policy "Update categories" on public.categories for update using (couple_id = public.my_couple_id());
+create policy "Delete categories" on public.categories for delete using (couple_id = public.my_couple_id());
+
+create policy "View expenses" on public.expenses for select using (couple_id = public.my_couple_id());
+create policy "Insert expenses" on public.expenses for insert with check (couple_id = public.my_couple_id());
+create policy "Update expenses" on public.expenses for update using (couple_id = public.my_couple_id());
+create policy "Delete expenses" on public.expenses for delete using (couple_id = public.my_couple_id());
+
+create policy "View budgets" on public.budgets for select using (couple_id = public.my_couple_id());
+create policy "Manage budgets" on public.budgets for all using (couple_id = public.my_couple_id());
+
+create policy "View goals" on public.goals for select using (couple_id = public.my_couple_id());
+create policy "Manage goals" on public.goals for all using (couple_id = public.my_couple_id());
+
+create policy "View contributions" on public.goal_contributions for select using (goal_id in (select id from public.goals where couple_id = public.my_couple_id()));
+create policy "Add contributions" on public.goal_contributions for insert with check (goal_id in (select id from public.goals where couple_id = public.my_couple_id()));
+
+create policy "Manage own push" on public.push_subscriptions for all using (user_id = auth.uid());
+
+create policy "View settlements" on public.settlements for select using (couple_id = public.my_couple_id());
+create policy "Insert settlements" on public.settlements for insert with check (couple_id = public.my_couple_id());
+
+create policy "View recurring expenses" on public.recurring_expenses for select using (couple_id = public.my_couple_id());
+create policy "Manage recurring expenses" on public.recurring_expenses for all using (couple_id = public.my_couple_id());
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into public.profiles (id, display_name, avatar_url)
+  values (new.id, coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)), new.raw_user_meta_data->>'avatar_url')
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
+
+create or replace function public.update_modified_column()
+returns trigger language plpgsql as $$
+begin new.updated_at = now(); return new; end;
+$$;
+create trigger set_expense_updated before update on public.expenses for each row execute procedure public.update_modified_column();
+
+create or replace function public.set_paid_by_snapshot_name()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.paid_by is not null and (
+       tg_op = 'INSERT'
+       or new.paid_by is distinct from old.paid_by
+       or new.paid_by_snapshot_name is null
+     ) then
+    select display_name into new.paid_by_snapshot_name
+    from public.profiles where id = new.paid_by;
+  end if;
+  return new;
+end;
+$$;
+create trigger trg_expenses_set_snapshot
+  before insert or update of paid_by on public.expenses
+  for each row execute function public.set_paid_by_snapshot_name();
+create trigger trg_recurring_expenses_set_snapshot
+  before insert or update of paid_by on public.recurring_expenses
+  for each row execute function public.set_paid_by_snapshot_name();
+
+create or replace function public.update_goal_amount()
+returns trigger language plpgsql security definer as $$
+begin
+  update public.goals set current_amount = (select coalesce(sum(amount), 0) from public.goal_contributions where goal_id = new.goal_id) where id = new.goal_id;
+  return new;
+end;
+$$;
+create trigger on_goal_contribution after insert on public.goal_contributions for each row execute procedure public.update_goal_amount();
+
+create or replace function public.seed_default_categories(p_couple_id uuid)
+returns void language plpgsql security definer as $$
+begin
+  insert into public.categories (couple_id, name, icon, color, sort_order) values
+    (p_couple_id, 'Продукты',    'shopping-cart', '#EF9F27', 1),
+    (p_couple_id, 'Рестораны',   'utensils',      '#E24B4A', 2),
+    (p_couple_id, 'Жильё',      'home',          '#7F77DD', 3),
+    (p_couple_id, 'Транспорт',  'car',           '#378ADD', 4),
+    (p_couple_id, 'Здоровье',   'heart',         '#D4537E', 5),
+    (p_couple_id, 'Развлечения','gamepad',       '#1D9E75', 6),
+    (p_couple_id, 'Одежда',     'shirt',         '#D85A30', 7),
+    (p_couple_id, 'Подписки',   'credit-card',   '#534AB7', 8),
+    (p_couple_id, 'Другое',     'more-horizontal','#888780', 9);
+end;
+$$;
+
+alter publication supabase_realtime add table public.expenses;
+alter publication supabase_realtime add table public.goals;
+alter publication supabase_realtime add table public.settlements;
+
+create or replace view public.monthly_category_totals with (security_barrier) as
+select e.couple_id, date_trunc('month', e.expense_date)::date as month, e.category_id,
+  c.name as category_name, c.icon as category_icon, c.color as category_color,
+  sum(e.amount) as total, count(*) as tx_count
+from public.expenses e left join public.categories c on c.id = e.category_id
+where e.couple_id = public.my_couple_id()
+group by e.couple_id, month, e.category_id, c.name, c.icon, c.color;
+
+create or replace view public.monthly_payer_totals with (security_barrier) as
+select e.couple_id, date_trunc('month', e.expense_date)::date as month, e.paid_by,
+  p.display_name as payer_name, sum(e.amount) as total_paid, count(*) as tx_count
+from public.expenses e
+join public.profiles p on p.id = e.paid_by
+join public.couples c  on c.id = e.couple_id
+where e.couple_id = public.my_couple_id()
+  and e.currency = c.currency
+group by e.couple_id, month, e.paid_by, p.display_name;
+
+create or replace view public.balance_between_partners with (security_barrier) as
+select e.couple_id, e.paid_by, p.display_name as payer_name,
+  sum(case e.split
+    when 'equal' then e.amount / 2
+    when 'full_payer' then 0
+    when 'full_other' then e.amount
+    when 'custom' then e.amount * (100 - e.split_payer_pct) / 100
+  end) as amount_owed_to_payer
+from public.expenses e
+join public.profiles p on p.id = e.paid_by
+join public.couples c  on c.id = e.couple_id
+where e.couple_id = public.my_couple_id()
+  and e.currency = c.currency
+group by e.couple_id, e.paid_by, p.display_name;
