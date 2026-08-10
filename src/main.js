@@ -23,8 +23,8 @@ registerProfileRoute();
 
 function renderBootLoader(app) {
   app.innerHTML = `
-    <div class="loading boot-video-wrap">
-      <video class="boot-video" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
+    <div class="loading boot-splash-wrap">
+      <img class="boot-splash" src="/splash/splash-${1 + Math.floor(Math.random() * BOOT_SPLASH_COUNT)}.jpg" alt="">
     </div>
   `;
 }
@@ -52,7 +52,9 @@ function withTimeout(promise, timeoutMs, label) {
 }
 
 // ---- INIT ----
-// Видео-заставка: 4s при входе в дашборд (залогинен), 2.2s перед экраном логина
+// Заставка: случайный кадр из public/splash при каждом запуске.
+// 4s при входе в дашборд (залогинен), 2.2s перед экраном логина
+const BOOT_SPLASH_COUNT = 7;
 const BOOT_SPLASH_LOGGED_IN_MS = 4000;
 const BOOT_SPLASH_AUTH_MS = 2200;
 
