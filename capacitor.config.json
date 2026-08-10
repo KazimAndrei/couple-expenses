@@ -2,7 +2,8 @@
   "appId": "com.kazimandrei.coupleexpenses",
   "appName": "CoupleExpenses",
   "webDir": "dist",
+  "backgroundColor": "#f6f5f0",
   "ios": {
-    "contentInset": "automatic"
+    "contentInset": "never"
   }
 }

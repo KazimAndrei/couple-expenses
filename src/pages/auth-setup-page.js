@@ -1,6 +1,6 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
-import { createCouple, getProfile, getSession, joinCouple, signInWithApple, updateDisplayName } from '../lib/supabase.js';
+import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signInAsGuest, updateDisplayName, inviteLink, GUEST_ENABLED } from '../lib/supabase.js';
 import { currentMonth, escapeHtml, icon } from '../lib/utils.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -47,12 +47,30 @@ export function registerAuthSetupRoutes() {
         <div class="auth-sub">Совместный учёт расходов<br>для вас двоих</div>
         <div class="auth-form">
           <button class="btn btn-apple" id="btn-apple">${appleLogo}<span>Войти через Apple</span></button>
+          ${GUEST_ENABLED ? '<button class="btn btn-secondary" style="margin-top:12px;" id="btn-guest">Войти как гость (dev)</button>' : ''}
         </div>
       </div>
     `;
     document.getElementById('welcome-splash').addEventListener('click', () => {
       document.getElementById('welcome-splash').style.display = 'none';
       document.getElementById('auth-content').style.display = 'block';
+    });
+
+    document.getElementById('btn-guest')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-guest');
+      btn.disabled = true;
+      try {
+        await signInAsGuest();
+        const profile = await getProfile();
+        if (profile?.couple_id) {
+          await enterApp(profile.couples);
+        } else {
+          navigate('/setup');
+        }
+      } catch (err) {
+        showToast('Ошибка: ' + getReadableError(err));
+        btn.disabled = false;
+      }
     });
 
     document.getElementById('btn-apple').onclick = async () => {
@@ -117,20 +135,20 @@ export function registerAuthSetupRoutes() {
         await updateDisplayName(name);
         const couple = await createCouple();
         localStorage.removeItem(PENDING_INVITE_KEY);
-        const inviteLink = `${window.location.origin}/#/invite?code=${couple.invite_code}`;
+        const link = inviteLink(couple.invite_code);
         const form = document.getElementById('setup-form');
         form.style.display = 'block';
         form.innerHTML = `
           <p style="font-size: 14px; color: var(--c-text-secondary); margin-bottom: 8px;">Отправьте партнёру ссылку:</p>
-          <div class="invite-code" style="font-size:13px; word-break:break-all;">${e(inviteLink)}</div>
+          <div class="invite-code" style="font-size:13px; word-break:break-all;">${e(link)}</div>
           <button class="btn btn-secondary btn-small" id="btn-share-invite">Поделиться</button>
           <button class="btn btn-primary" style="margin-top: 16px;" id="btn-start">Начать</button>
         `;
         document.getElementById('btn-share-invite').onclick = async () => {
           if (navigator.share) {
-            try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре в CoupleExpenses', url: inviteLink }); } catch { /* отменили шаринг */ }
+            try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре в CoupleExpenses', url: link }); } catch { /* отменили шаринг */ }
           } else {
-            await navigator.clipboard.writeText(inviteLink);
+            await navigator.clipboard.writeText(link);
             showToast('Ссылка скопирована');
           }
         };

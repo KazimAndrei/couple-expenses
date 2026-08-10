@@ -1,6 +1,6 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { getCoupleMembers, getProfile, signOut, supabase } from '../lib/supabase.js';
+import { getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
 import { escapeHtml, icon } from '../lib/utils.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -251,11 +251,11 @@ export function registerProfileRoute() {
       await removeAvatar(state.profile.id);
     });
     document.getElementById('btn-invite')?.addEventListener('click', async () => {
-      const inviteLink = `${window.location.origin}/#/invite?code=${state.couple.invite_code}`;
+      const link = inviteLink(state.couple.invite_code);
       if (navigator.share) {
-        try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре', url: inviteLink }); } catch { /* отменили шаринг */ }
+        try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре', url: link }); } catch { /* отменили шаринг */ }
       } else {
-        navigator.clipboard.writeText(inviteLink)
+        navigator.clipboard.writeText(link)
           .then(() => showToast('Ссылка скопирована'))
           .catch(() => showToast(state.couple.invite_code));
       }

@@ -4,6 +4,13 @@ import { Capacitor } from '@capacitor/core';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
 export const APPLE_APP_BUNDLE_ID = 'com.kazimandrei.coupleexpenses';
+export const WEB_APP_ORIGIN = 'https://couple-expenses.pages.dev';
+
+// В нативе location.origin — это capacitor://localhost, такую ссылку не отправишь.
+export function inviteLink(code) {
+  const origin = window.location.origin?.startsWith('http') ? window.location.origin : WEB_APP_ORIGIN;
+  return `${origin}/#/invite?code=${code}`;
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -54,6 +61,17 @@ export async function signInWithApple() {
   return null; // страница уходит в редирект
 }
 
+// Гостевой вход на период разработки. Кнопка появляется только при VITE_ENABLE_GUEST=1;
+// перед релизом в стор флаг убирается из .env. Требует Anonymous sign-ins в Supabase.
+export const GUEST_ENABLED = import.meta.env.VITE_ENABLE_GUEST === '1';
+
+export async function signInAsGuest() {
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  if (!data?.session) throw new Error('Anonymous Sign-In выключен в Supabase (Authentication → Sign In / Providers)');
+  return data;
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
@@ -99,15 +117,10 @@ export async function getCoupleMembers(coupleId) {
 
 // ---- Couple helpers ----
 export async function createCouple(name = 'Our Budget') {
-  const { data: couple, error: coupleErr } = await supabase
-    .from('couples')
-    .insert({ name })
-    .select()
-    .single();
-  if (coupleErr) throw coupleErr;
-  const { data: { user } } = await supabase.auth.getUser();
-  await supabase.from('profiles').update({ couple_id: couple.id }).eq('id', user.id);
-  await supabase.rpc('seed_default_categories', { p_couple_id: couple.id });
+  // Атомарный RPC: couple + couple_id в профиле + сид категорий одной транзакцией.
+  // Прямой INSERT..RETURNING не работает: SELECT-политика couples видит пару только после привязки профиля.
+  const { data: couple, error } = await supabase.rpc('create_couple', { p_name: name });
+  if (error) throw error;
   return couple;
 }
 
