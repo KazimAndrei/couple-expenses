@@ -50,6 +50,34 @@ export function formatDate(dateStr) {
   return `${d.getDate()} ${monthNamesRu[d.getMonth()].toLowerCase().slice(0, 3)}, ${dayNamesRu[d.getDay()]}`;
 }
 
+/** Calendar date on each transaction row (DD.MM.YYYY). */
+/** Localized date+time for income log / analytics. */
+export function formatDateTimeRu(isoStr) {
+  if (isoStr == null || isoStr === '') return '—';
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function formatExpenseDateRow(dateStr) {
+  if (dateStr == null || dateStr === '') return '';
+  if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+    const d = dateStr;
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  }
+  const raw = String(dateStr);
+  const iso = raw.slice(0, 10);
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+}
+
 export function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -111,6 +139,8 @@ const iconPaths = {
   'trending-up': '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
   'trending-down': '<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>',
 };
+
+export const availableIcons = Object.keys(iconPaths);
 
 export function icon(name, size = 20, color = 'currentColor') {
   const paths = iconPaths[name] || iconPaths['more-horizontal'];

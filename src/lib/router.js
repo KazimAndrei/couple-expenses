@@ -1,3 +1,5 @@
+import { diagError, diagStep } from '../services/diagnostics.js';
+
 const routes = {};
 let currentCleanup = null;
 
@@ -15,17 +17,32 @@ export function getCurrentPath() {
 
 async function handleRoute() {
   const path = getCurrentPath();
+  diagStep(`route: ${path}`);
   const app = document.getElementById('app');
   if (currentCleanup) {
     currentCleanup();
     currentCleanup = null;
   }
   const handler = routes[path] || routes['/'];
-  if (handler) {
-    const cleanup = await handler(app);
-    if (typeof cleanup === 'function') {
-      currentCleanup = cleanup;
+  try {
+    if (handler) {
+      const cleanup = await handler(app);
+      if (typeof cleanup === 'function') {
+        currentCleanup = cleanup;
+      }
     }
+  } catch (err) {
+    console.error('Route handler error:', err);
+    diagError(`route failed: ${path}`, err);
+    app.innerHTML = `
+      <div class="empty-state" style="padding-top: 120px;">
+        <p>Не удалось загрузить экран</p>
+        <button class="btn btn-primary" style="margin-top: 12px; max-width: 280px;" id="btn-route-retry">Повторить</button>
+      </div>
+    `;
+    document.getElementById('btn-route-retry')?.addEventListener('click', () => {
+      handleRoute();
+    });
   }
 }
 

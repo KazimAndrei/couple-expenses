@@ -1,0 +1,17 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Не кэшируем входные файлы — обновления долетают сразу
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Хешированные ассеты неизменяемы — кэшируем агрессивно
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

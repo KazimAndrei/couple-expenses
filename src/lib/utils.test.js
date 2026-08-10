@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, nextMonth, pct, prevMonth, safeColor } from './utils.js';
+import { escapeHtml, formatExpenseDateRow, nextMonth, pct, prevMonth, safeColor } from './utils.js';
 
 describe('date helpers', () => {
   it('handles year boundaries for prevMonth and nextMonth', () => {
     expect(prevMonth('2026-01')).toBe('2025-12');
     expect(nextMonth('2025-12')).toBe('2026-01');
+  });
+
+  it('formats expense row date as DD.MM.YYYY', () => {
+    expect(formatExpenseDateRow('2026-03-31')).toBe('31.03.2026');
+    expect(formatExpenseDateRow('2026-03-31T00:00:00.000Z')).toBe('31.03.2026');
+    expect(formatExpenseDateRow('')).toBe('');
   });
 });
 

@@ -1,10 +1,11 @@
 import './styles/app.css';
-import { supabase, getSession, getProfile, authWithInviteCode } from './lib/supabase.js';
+import { supabase, getSession, getProfile, authWithInviteCode, ensureAuthenticated } from './lib/supabase.js';
 import { navigate, startRouter, getCurrentPath } from './lib/router.js';
 import { setState } from './lib/store.js';
 import { currentMonth } from './lib/utils.js';
 import { registerServiceWorker } from './services/pwa.js';
 import { exposeToastGlobally } from './services/toast.js';
+import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
 import { registerAuthSetupRoutes } from './pages/auth-setup-page.js';
 import { registerHomeRoute } from './pages/home-page.js';
 import { registerAnalyticsRoute } from './pages/analytics-page.js';
@@ -16,88 +17,128 @@ registerHomeRoute();
 registerAnalyticsRoute();
 registerGoalsRoute();
 registerProfileRoute();
+let authRecoveryInProgress = false;
+
+function renderBootLoader(app) {
+  app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+}
+
+function renderBootFallback(app) {
+  app.innerHTML = `
+    <div class="loading-fallback">
+      <div class="loading-fallback-title">Долго загружается</div>
+      <div class="loading-fallback-text">Проверьте интернет и перезапустите приложение</div>
+      <button class="btn btn-primary" id="btn-restart-app" style="max-width: 280px;">Перезапустить приложение</button>
+    </div>
+  `;
+  document.getElementById('btn-restart-app')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+    }),
+  ]);
+}
 
 // ---- INIT ----
 async function init() {
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  renderBootLoader(app);
+  diagStep('init: start');
+  let bootFallbackShown = false;
+  const bootFallbackTimer = setTimeout(() => {
+    if (!app.querySelector('.loading')) return;
+    bootFallbackShown = true;
+    diagStep('init: showing loading fallback');
+    renderBootFallback(app);
+  }, 9000);
 
   registerServiceWorker();
+  diagStep('init: service worker check done');
+
+  authRecoveryInProgress = true;
 
   supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN') {
-      const profile = await getProfile();
-      if (profile?.couple_id) {
-        setState({ user: session.user, profile, couple: profile.couples || null, currentMonth: currentMonth(), loading: false });
-        if (getCurrentPath() === '/auth') navigate('/');
+    try {
+      diagStep(`auth change: ${event}`);
+      if (authRecoveryInProgress) return;
+      if (event === 'SIGNED_IN') {
+        const profile = await withTimeout(getProfile(), 10000, 'getProfile');
+        if (profile?.couple_id) {
+          setState({ user: session.user, profile, couple: profile.couples || null, currentMonth: currentMonth(), loading: false });
+          if (getCurrentPath() === '/auth') navigate('/');
+        }
+      } else if (event === 'SIGNED_OUT') {
+        if (localStorage.getItem('ce_invite_code')) {
+          authRecoveryInProgress = true;
+          try {
+            const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
+            if (result) {
+              setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || result.couple || null, currentMonth: currentMonth(), loading: false });
+              navigate('/');
+              return;
+            }
+          } catch {
+            // recovery failed
+          } finally {
+            authRecoveryInProgress = false;
+          }
+        }
+        setState({ user: null, profile: null, couple: null, loading: false });
+        navigate('/auth');
       }
-    } else if (event === 'SIGNED_OUT') {
-      setState({ user: null, profile: null, couple: null, loading: false });
-      navigate('/auth');
+    } catch (err) {
+      diagError('auth state change failed', err);
     }
   });
 
+  diagStep('init: router start');
+  startRouter();
+
   try {
-    const session = await getSession();
-    if (session?.user) {
-      const profile = await getProfile();
-      if (profile && profile.couple_id) {
-        setState({ user: session.user, profile, couple: profile.couples || null, currentMonth: currentMonth(), loading: false });
-        // User is logged in and has a couple — go to home
-      } else if (profile && !profile.couple_id) {
-        // User exists but no couple — check if we have saved invite code
-        const savedCode = localStorage.getItem('ce_invite_code');
-        const savedName = localStorage.getItem('ce_display_name');
-        if (savedCode) {
-          try {
-            const couple = await authWithInviteCode(savedCode, savedName || 'User');
-            const refreshedProfile = await getProfile();
-            setState({ user: session.user, profile: refreshedProfile, couple: refreshedProfile?.couples || couple, currentMonth: currentMonth(), loading: false });
-          } catch {
-            setState({ loading: false });
-            navigate('/auth');
-          }
-        } else {
-          setState({ user: session.user, profile, couple: null, currentMonth: currentMonth(), loading: false });
-          navigate('/auth');
-        }
-      } else {
-        // No profile — create one
-        const { error } = await supabase.from('profiles').upsert({
-          id: session.user.id,
-          display_name: localStorage.getItem('ce_display_name') || 'User',
-        });
-        if (error) console.error('Create profile error:', error);
-        setState({ loading: false });
-        navigate('/auth');
-      }
+    diagStep('init: reading session');
+    const result = await withTimeout(ensureAuthenticated(), 15000, 'ensureAuthenticated');
+    if (result) {
+      diagStep('init: authenticated');
+      setState({ user: result.session.user, profile: result.profile, couple: result.profile.couples || result.couple || null, currentMonth: currentMonth(), loading: false });
+      navigate('/');
     } else {
-      // No session — check if we have saved credentials for auto-login
-      const savedCode = localStorage.getItem('ce_invite_code');
-      const savedName = localStorage.getItem('ce_display_name');
-      if (savedCode) {
-        try {
-          const couple = await authWithInviteCode(savedCode, savedName || 'User');
-          const newSession = await getSession();
-          const profile = await getProfile();
-          setState({ user: newSession?.user, profile, couple: profile?.couples || couple, currentMonth: currentMonth(), loading: false });
-        } catch {
-          setState({ loading: false });
-          navigate('/auth');
-        }
-      } else {
-        setState({ loading: false });
-        navigate('/auth');
-      }
+      diagStep('init: not authenticated');
+      setState({ loading: false });
+      navigate('/auth');
     }
   } catch (err) {
     console.error('Init error:', err);
+    diagError('init failed', err);
     setState({ loading: false });
+    if (bootFallbackShown) {
+      renderBootFallback(app);
+      return;
+    }
     navigate('/auth');
+  } finally {
+    authRecoveryInProgress = false;
+    clearTimeout(bootFallbackTimer);
   }
-
-  startRouter();
 }
 
+function setupOfflineBanner() {
+  const banner = document.createElement('div');
+  banner.className = 'offline-banner';
+  banner.textContent = 'Нет подключения к интернету';
+  document.body.appendChild(banner);
+  const update = () => banner.classList.toggle('visible', !navigator.onLine);
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+  update();
+}
+
+initDiagnostics();
 exposeToastGlobally();
+setupOfflineBanner();
 init();

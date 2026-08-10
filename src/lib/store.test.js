@@ -12,6 +12,8 @@ const initial = {
   members: [],
   filterBy: null,
   analyticsFilterBy: null,
+  monthlyIncome: 0,
+  incomeEntries: [],
   currentMonth: null,
   loading: true,
 };

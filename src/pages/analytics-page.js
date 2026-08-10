@@ -1,9 +1,19 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { getBudgets, getCoupleMembers, getExpenses, upsertBudget } from '../lib/supabase.js';
-import { currentMonth, escapeHtml, formatMoney, formatMonth, icon, pct, safeColor } from '../lib/utils.js';
+import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
+import { currentMonth, escapeHtml, formatDateTimeRu, formatMoney, formatMonth, icon, pct, prevMonth, safeColor } from '../lib/utils.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
+import { getReadableError } from '../services/errors.js';
+import { enableModalSwipe } from '../components/modal-swipe.js';
+import {
+  MISSING_ANDREI_ID,
+  MISSING_POLINA_ID,
+  expenseJoinedProfileName,
+  filterExpensesByMemberChip,
+  resolveMemberSides,
+  resolvePayerSide,
+} from '../lib/member-filters.js';
 
 const e = escapeHtml;
 
@@ -26,6 +36,7 @@ function showAddBudgetModal() {
     </div>
   `;
   document.body.appendChild(backdrop);
+  enableModalSwipe(backdrop);
   document.getElementById('btn-save-budget').onclick = async () => {
     const categoryId = document.getElementById('budget-cat').value;
     const limit = parseFloat(document.getElementById('budget-limit').value);
@@ -36,7 +47,7 @@ function showAddBudgetModal() {
       showToast('Бюджет добавлен');
       navigate('/analytics');
     } catch (err) {
-      showToast('Ошибка: ' + err.message);
+      showToast('Ошибка: ' + getReadableError(err));
     }
   };
 }
@@ -46,33 +57,56 @@ export function registerAnalyticsRoute() {
     const state = getState();
     if (!state.couple) { navigate('/'); return; }
     const month = state.currentMonth || currentMonth();
+    const previous = prevMonth(month);
     let expenses = [];
+    let prevExpenses = [];
     let members = state.members || [];
     let budgets = [];
-    try {
-      [expenses, members, budgets] = await Promise.all([
-        getExpenses(state.couple.id, month),
-        getCoupleMembers(state.couple.id),
-        getBudgets(state.couple.id, month),
-      ]);
-      setState({ budgets, members });
-    } catch (err) {
-      console.error('Analytics load error:', err);
-    }
+    let incomeEntries = [];
+    const settled = await Promise.allSettled([
+      getExpenses(state.couple.id, month),
+      getExpenses(state.couple.id, previous),
+      getCoupleMembers(state.couple.id),
+      getBudgets(state.couple.id, month),
+      getIncomeEntries(state.couple.id, month),
+    ]);
+    const take = (i, fallback) => {
+      const r = settled[i];
+      if (r.status === 'fulfilled') return r.value;
+      console.error('Analytics load partial failure:', r.reason);
+      return fallback;
+    };
+    expenses = take(0, []);
+    prevExpenses = take(1, []);
+    members = take(2, state.members || []);
+    budgets = take(3, []);
+    incomeEntries = take(4, []);
+    setState({ budgets, members, incomeEntries });
 
     const filterBy = state.analyticsFilterBy || null;
-    const filteredExpenses = filterBy ? expenses.filter(expense => expense.paid_by === filterBy) : expenses;
-    const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const sides = resolveMemberSides(members, state.profile?.id);
+    const { memberA, memberB, andreiIds, polinaIds } = sides;
+    const filteredExpenses = filterExpensesByMemberChip(expenses, filterBy, sides);
 
-    const payerMap = new Map((members || []).map(member => [member.id, {
-      id: member.id,
-      payer_name: member.display_name || 'Пользователь',
-      total_paid: 0,
-    }]));
+    const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const prevTotal = prevExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const trendPct = prevTotal > 0 ? Math.round(((grandTotal - prevTotal) / prevTotal) * 100) : 0;
+
+    const resolvePayerId = (expense) => {
+      const side = resolvePayerSide(expense.paid_by, sides, expenseJoinedProfileName(expense));
+      if (side === 'a') return memberA?.id || expense.paid_by;
+      if (side === 'b') return memberB?.id || expense.paid_by;
+      return expense.paid_by;
+    };
+    const payerMap = new Map();
+    if (memberA) payerMap.set(memberA.id, { id: memberA.id, payer_name: 'Андрей', total_paid: 0 });
+    if (memberB) payerMap.set(memberB.id, { id: memberB.id, payer_name: 'Полина', total_paid: 0 });
     for (const expense of expenses) {
-      const existing = payerMap.get(expense.paid_by) || { id: expense.paid_by, payer_name: expense.profiles?.display_name || 'Пользователь', total_paid: 0 };
-      existing.total_paid += parseFloat(expense.amount);
-      payerMap.set(expense.paid_by, existing);
+      const targetId = resolvePayerId(expense);
+      const existing = payerMap.get(targetId);
+      if (existing) {
+        existing.total_paid += parseFloat(expense.amount);
+      }
     }
     const payerTotals = [...payerMap.values()].filter(p => !filterBy || p.id === filterBy);
 
@@ -89,36 +123,59 @@ export function registerAnalyticsRoute() {
       catMap.set(categoryId, existing);
     }
     const sortedCats = [...catMap.values()].sort((a, b) => b.total - a.total);
+    const topCategory = sortedCats[0] || null;
 
-    const nameCounts = new Map();
-    for (const member of members || []) {
-      const key = member.display_name || 'Пользователь';
-      nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
-    }
-    const memberLabel = (member) => {
-      const baseName = member?.display_name || 'Пользователь';
-      if ((nameCounts.get(baseName) || 0) <= 1) return baseName;
-      return member.id === state.profile?.id ? `${baseName} (вы)` : `${baseName} (партнер)`;
+    const incomeAuthorLabel = (uid) => {
+      const m = (members || []).find((x) => x.id === uid);
+      if (!m) return '—';
+      if (m.id === memberA?.id) return 'Андрей';
+      if (m.id === memberB?.id) return 'Полина';
+      return m.display_name || 'Участник';
     };
-    const selectedMember = filterBy ? members.find(member => member.id === filterBy) : null;
+
+    const labelA = 'Андрей';
+    const labelB = 'Полина';
+    const selectedMemberLabel = filterBy === MISSING_ANDREI_ID
+      ? 'Андрей'
+      : (filterBy === MISSING_POLINA_ID ? 'Полина' : (filterBy === memberA?.id ? 'Андрей' : (filterBy === memberB?.id ? 'Полина' : null)));
+    const avatarUrlA = memberA?.avatar_url || (memberA?.id === state.profile?.id ? state.profile?.avatar_url : null);
+    const avatarUrlB = memberB?.avatar_url || (memberB?.id === state.profile?.id ? state.profile?.avatar_url : null);
+    const avatarA = avatarUrlA
+      ? `<img src="${avatarUrlA}" class="filter-avatar" alt="">`
+      : `<div class="filter-avatar filter-avatar-initials">${e((memberA?.display_name || 'А')[0])}</div>`;
+    const avatarB = avatarUrlB
+      ? `<img src="${avatarUrlB}" class="filter-avatar" alt="">`
+      : `<div class="filter-avatar filter-avatar-initials">${e((memberB?.display_name || 'П')[0])}</div>`;
     app.innerHTML = `
       <div class="page-enter">
         <div class="header"><div><div class="header-title">Аналитика</div><div class="header-sub">${formatMonth(month)}</div></div></div>
-        <div class="filter-bar" style="padding: 8px 16px 12px;">
-          <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">Общие</button>
-          ${(members || []).map(member => {
-            const memberName = memberLabel(member);
-            const memberAvatar = member?.avatar_url
-              ? `<img src="${e(member.avatar_url)}" class="filter-avatar">`
-              : `<div class="filter-avatar filter-avatar-initials">${e(memberName[0] || 'U')}</div>`;
-            return `<button class="filter-chip ${filterBy === member.id ? 'active' : ''}" data-filter="${member.id}">${memberAvatar} ${e(memberName)}</button>`;
-          }).join('')}
+        <div class="filter-sticky">
+          <div class="filter-bar" style="padding: 8px 16px 12px;">
+            <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">Все</button>
+            <button class="filter-chip ${filterBy === (memberA?.id || MISSING_ANDREI_ID) ? 'active' : ''}" data-filter="${memberA?.id || MISSING_ANDREI_ID}" ${memberA ? '' : 'data-disabled="true"'}>${avatarA} ${labelA}</button>
+            <button class="filter-chip ${filterBy === (memberB?.id || MISSING_POLINA_ID) ? 'active' : ''}" data-filter="${memberB?.id || MISSING_POLINA_ID}" ${memberB ? '' : 'data-disabled="true"'}>${avatarB} ${labelB}</button>
+          </div>
         </div>
         <div class="stats-grid">
-          <div class="stat-card"><div class="stat-label">${selectedMember ? `Всего у ${e(memberLabel(selectedMember))}` : 'Всего'}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? `Всего у ${e(selectedMemberLabel)}` : 'Всего'}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
           <div class="stat-card"><div class="stat-label">Среднее/день</div><div class="stat-value">${formatMoney(grandTotal / 30, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">К прошлому месяцу</div><div class="stat-value">${trendPct > 0 ? '+' : ''}${trendPct}%</div></div>
+          <div class="stat-card"><div class="stat-label">Топ категория</div><div class="stat-value" style="font-size:14px;">${e(topCategory?.category_name || '—')}</div></div>
           ${payerTotals.map(p => `
             <div class="stat-card"><div class="stat-label">${e(p.payer_name)} оплатил(а)</div><div class="stat-value">${formatMoney(p.total_paid, state.couple.currency)}</div></div>
+          `).join('')}
+        </div>
+        <div class="section-header"><span class="section-title">Поступления (доход)</span></div>
+        <div class="income-entries-analytics" style="padding:0 16px 16px;">
+          ${incomeEntries.length === 0 ? '<div class="empty-state" style="padding:16px 0;"><p style="margin:0;font-size:14px;color:var(--c-text-secondary);">Нет записей о доходах за этот месяц</p></div>' : incomeEntries.map((ent) => `
+            <div class="income-entry-row" data-income-id="${e(ent.id)}" data-income-amount="${e(String(ent.amount))}" style="display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:10px 0;border-bottom:1px solid var(--c-border);gap:10px;flex-wrap:wrap;">
+              <span style="color:var(--c-text-secondary);">${e(formatDateTimeRu(ent.created_at))}</span>
+              <span style="font-weight:600;">${e(incomeAuthorLabel(ent.created_by))}</span>
+              <span style="display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:600;white-space:nowrap;">${formatMoney(ent.amount, state.couple.currency)}</span>
+                <button class="btn-income-delete" type="button" aria-label="Удалить запись" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--c-danger,#e24b4a);display:inline-flex;align-items:center;">${icon('trash-2', 16, 'currentColor')}</button>
+              </span>
+            </div>
           `).join('')}
         </div>
         <div class="section-header"><span class="section-title">По категориям</span></div>
@@ -131,16 +188,16 @@ export function registerAnalyticsRoute() {
               <div class="cat-bar-amount">${formatMoney(c.total, state.couple.currency)}</div>
             </div>
           `).join('')}
-          ${sortedCats.length === 0 ? '<div class="empty-state"><p>Нет данных</p></div>' : ''}
+          ${sortedCats.length === 0 ? '<div class="empty-state"><p>Нет данных</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">Добавить расход</button></div>' : ''}
         </div>
         <div class="section-header"><span class="section-title">Бюджеты</span><button class="section-action" id="btn-add-budget">+ Добавить</button></div>
         <div id="budgets-list">
-          ${budgets.length === 0 ? '<div class="empty-state"><p>Бюджеты не настроены</p></div>' : budgets.map(b => {
+          ${budgets.length === 0 ? '<div class="empty-state"><p>Бюджеты не настроены</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">Добавить бюджет</button></div>' : budgets.map(b => {
             const spent = sortedCats.find(c => c.category_id === b.category_id)?.total || 0;
             const percentage = pct(spent, b.limit_amount);
             const fillClass = percentage > 100 ? 'over' : percentage > 80 ? 'warn' : '';
             return `
-              <div class="budget-card">
+              <div class="budget-card" data-budget-id="${b.id}">
                 <div class="budget-header">
                   <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(b.categories?.name || 'Категория')}</div>
                   <div class="budget-amounts">${formatMoney(spent)} / ${formatMoney(b.limit_amount)}</div>
@@ -155,11 +212,63 @@ export function registerAnalyticsRoute() {
     `;
     app.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
+        if (chip.dataset.disabled === 'true') {
+          showToast('Полина еще не присоединилась к паре');
+          return;
+        }
         const selected = chip.dataset.filter;
         setState({ analyticsFilterBy: selected === 'all' ? null : selected });
         navigate('/analytics');
       });
     });
+    app.querySelectorAll('.income-entry-row .btn-income-delete').forEach((btn) => {
+      btn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const row = btn.closest('.income-entry-row');
+        const id = row?.dataset.incomeId;
+        const amountStr = row?.dataset.incomeAmount || '';
+        const amountFmt = formatMoney(parseFloat(amountStr || '0'), state.couple.currency);
+        if (!id) return;
+        if (!confirm(`Удалить запись о доходе ${amountFmt}?`)) return;
+        try {
+          await deleteIncomeEntry(id);
+          showToast('Запись удалена');
+          navigate('/analytics');
+        } catch (err) {
+          showToast('Ошибка: ' + getReadableError(err));
+        }
+      });
+    });
     document.getElementById('btn-add-budget')?.addEventListener('click', showAddBudgetModal);
+    document.getElementById('btn-empty-add-budget')?.addEventListener('click', showAddBudgetModal);
+    document.getElementById('btn-empty-add-expense')?.addEventListener('click', () => navigate('/'));
+    app.querySelectorAll('.budget-card[data-budget-id]').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        const budgetId = card.dataset.budgetId;
+        const bd = document.createElement('div');
+        bd.className = 'modal-backdrop';
+        bd.onclick = (ev) => { if (ev.target === bd) bd.remove(); };
+        bd.innerHTML = `
+          <div class="modal-sheet">
+            <div class="modal-handle"></div>
+            <div class="modal-title">Управление бюджетом</div>
+            <button class="btn btn-danger" id="btn-confirm-delete-budget">Удалить бюджет</button>
+            <button class="btn btn-secondary" id="btn-cancel-delete-budget" style="margin-top:8px;">Отмена</button>
+          </div>
+        `;
+        document.body.appendChild(bd);
+        enableModalSwipe(bd);
+        document.getElementById('btn-cancel-delete-budget').onclick = () => bd.remove();
+        document.getElementById('btn-confirm-delete-budget').onclick = async () => {
+          try {
+            await deleteBudget(budgetId);
+            bd.remove();
+            showToast('Бюджет удалён');
+            navigate('/analytics');
+          } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+        };
+      });
+    });
   });
 }

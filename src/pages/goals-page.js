@@ -1,9 +1,11 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addGoal, addGoalContribution, getGoals } from '../lib/supabase.js';
+import { addGoal, addGoalContribution, deleteGoal, getGoals, updateGoal } from '../lib/supabase.js';
 import { escapeHtml, formatDate, formatMoney, icon, pct } from '../lib/utils.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
+import { getReadableError } from '../services/errors.js';
+import { enableModalSwipe } from '../components/modal-swipe.js';
 
 const e = escapeHtml;
 
@@ -22,6 +24,7 @@ function showAddGoalModal() {
     </div>
   `;
   document.body.appendChild(backdrop);
+  enableModalSwipe(backdrop);
   document.getElementById('btn-save-goal').onclick = async () => {
     const name = document.getElementById('goal-name').value.trim();
     const target = parseFloat(document.getElementById('goal-target').value);
@@ -34,12 +37,12 @@ function showAddGoalModal() {
       showToast('Цель создана');
       navigate('/goals');
     } catch (err) {
-      showToast('Ошибка: ' + err.message);
+      showToast('Ошибка: ' + getReadableError(err));
     }
   };
 }
 
-function showContributeModal(goalId) {
+function showGoalActionsModal(goalId) {
   const { goals, couple } = getState();
   const goal = goals.find(g => g.id === goalId);
   if (!goal) return;
@@ -48,13 +51,16 @@ function showContributeModal(goalId) {
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
   backdrop.innerHTML = `
     <div class="modal-sheet">
-      <div class="modal-handle"></div><div class="modal-title">Пополнить: ${e(goal.name)}</div>
+      <div class="modal-handle"></div><div class="modal-title">${e(goal.name)}</div>
       <div style="text-align:center;margin-bottom:16px;color:var(--c-text-secondary);font-size:14px;">Прогресс: ${formatMoney(goal.current_amount, couple.currency)} из ${formatMoney(goal.target_amount, couple.currency)}</div>
-      <div class="form-group"><input type="number" class="form-input amount" id="contrib-amount" placeholder="0" inputmode="decimal"></div>
+      <div class="form-group"><label class="form-label">Пополнить</label><input type="number" class="form-input amount" id="contrib-amount" placeholder="0" inputmode="decimal"></div>
       <button class="btn btn-primary" id="btn-save-contrib">Пополнить</button>
+      <button class="btn btn-secondary" id="btn-edit-goal" style="margin-top:8px;">Изменить цель</button>
+      <button class="btn btn-danger" id="btn-delete-goal" style="margin-top:8px;">Удалить цель</button>
     </div>
   `;
   document.body.appendChild(backdrop);
+  enableModalSwipe(backdrop);
   setTimeout(() => document.getElementById('contrib-amount')?.focus(), 300);
   document.getElementById('btn-save-contrib').onclick = async () => {
     const amount = parseFloat(document.getElementById('contrib-amount').value);
@@ -64,9 +70,44 @@ function showContributeModal(goalId) {
       backdrop.remove();
       showToast('Пополнено');
       navigate('/goals');
-    } catch (err) {
-      showToast('Ошибка: ' + err.message);
-    }
+    } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+  };
+  document.getElementById('btn-edit-goal').onclick = () => {
+    backdrop.remove();
+    const editBackdrop = document.createElement('div');
+    editBackdrop.className = 'modal-backdrop';
+    editBackdrop.onclick = (ev) => { if (ev.target === editBackdrop) editBackdrop.remove(); };
+    editBackdrop.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div><div class="modal-title">Изменить цель</div>
+        <div class="form-group"><label class="form-label">Название</label><input type="text" class="form-input" id="edit-goal-name" value="${e(goal.name)}"></div>
+        <div class="form-group"><label class="form-label">Целевая сумма</label><input type="number" class="form-input" id="edit-goal-target" value="${goal.target_amount}"></div>
+        <div class="form-group"><label class="form-label">Дедлайн</label><input type="date" class="form-input" id="edit-goal-deadline" value="${goal.deadline || ''}"></div>
+        <button class="btn btn-primary" id="btn-save-goal-edit">Сохранить</button>
+      </div>
+    `;
+    document.body.appendChild(editBackdrop);
+    enableModalSwipe(editBackdrop);
+    document.getElementById('btn-save-goal-edit').onclick = async () => {
+      try {
+        await updateGoal(goal.id, {
+          name: document.getElementById('edit-goal-name').value.trim(),
+          target_amount: parseFloat(document.getElementById('edit-goal-target').value),
+          deadline: document.getElementById('edit-goal-deadline').value || null,
+        });
+        editBackdrop.remove();
+        showToast('Цель обновлена');
+        navigate('/goals');
+      } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+    };
+  };
+  document.getElementById('btn-delete-goal').onclick = async () => {
+    try {
+      await deleteGoal(goal.id);
+      backdrop.remove();
+      showToast('Цель удалена');
+      navigate('/goals');
+    } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
   };
 }
 
@@ -88,7 +129,7 @@ export function registerGoalsRoute() {
           <button class="header-action" id="btn-add-goal">${icon('plus', 20)}</button>
         </div>
         ${goals.length === 0 ? `
-          <div class="empty-state">${icon('target', 48, 'var(--c-text-muted)')}<p>Создайте первую общую цель</p></div>
+          <div class="empty-state">${icon('target', 48, 'var(--c-text-muted)')}<p>Создайте первую общую цель</p><button class="btn btn-primary" id="btn-empty-add-goal" style="margin-top: 12px; max-width: 240px;">Создать цель</button></div>
         ` : goals.map(g => {
           const percentage = pct(g.current_amount, g.target_amount);
           return `
@@ -102,8 +143,9 @@ export function registerGoalsRoute() {
       ${renderTabBar()}
     `;
     document.getElementById('btn-add-goal')?.addEventListener('click', showAddGoalModal);
+    document.getElementById('btn-empty-add-goal')?.addEventListener('click', showAddGoalModal);
     app.querySelectorAll('.goal-card[data-id]').forEach(card => {
-      card.onclick = () => showContributeModal(card.dataset.id);
+      card.onclick = () => showGoalActionsModal(card.dataset.id);
     });
   });
 }
