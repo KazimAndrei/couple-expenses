@@ -8,10 +8,10 @@ import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import {
-  MISSING_ANDREI_ID,
-  MISSING_POLINA_ID,
+  MISSING_PARTNER_ID,
   expenseJoinedProfileName,
   filterExpensesByMemberChip,
+  memberDisplayLabel,
   resolveMemberSides,
   resolvePayerSide,
 } from '../lib/member-filters.js';
@@ -85,8 +85,8 @@ export function registerAnalyticsRoute() {
     setState({ budgets, members, incomeEntries });
 
     const filterBy = state.analyticsFilterBy || null;
-    const sides = resolveMemberSides(members, state.profile?.id);
-    const { memberA, memberB, andreiIds, polinaIds } = sides;
+    const sides = resolveMemberSides(members);
+    const { memberA, memberB } = sides;
     const filteredExpenses = filterExpensesByMemberChip(expenses, filterBy, sides);
 
     const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
@@ -100,8 +100,8 @@ export function registerAnalyticsRoute() {
       return expense.paid_by;
     };
     const payerMap = new Map();
-    if (memberA) payerMap.set(memberA.id, { id: memberA.id, payer_name: 'Андрей', total_paid: 0 });
-    if (memberB) payerMap.set(memberB.id, { id: memberB.id, payer_name: 'Полина', total_paid: 0 });
+    if (memberA) payerMap.set(memberA.id, { id: memberA.id, payer_name: memberDisplayLabel(memberA), total_paid: 0 });
+    if (memberB) payerMap.set(memberB.id, { id: memberB.id, payer_name: memberDisplayLabel(memberB), total_paid: 0 });
     for (const expense of expenses) {
       const targetId = resolvePayerId(expense);
       const existing = payerMap.get(targetId);
@@ -129,32 +129,31 @@ export function registerAnalyticsRoute() {
     const incomeAuthorLabel = (uid) => {
       const m = (members || []).find((x) => x.id === uid);
       if (!m) return '—';
-      if (m.id === memberA?.id) return 'Андрей';
-      if (m.id === memberB?.id) return 'Полина';
-      return m.display_name || t('common.member');
+      return memberDisplayLabel(m);
     };
 
-    const labelA = 'Андрей';
-    const labelB = 'Полина';
-    const selectedMemberLabel = filterBy === MISSING_ANDREI_ID
-      ? 'Андрей'
-      : (filterBy === MISSING_POLINA_ID ? 'Полина' : (filterBy === memberA?.id ? 'Андрей' : (filterBy === memberB?.id ? 'Полина' : null)));
-    const avatarUrlA = memberA?.avatar_url || (memberA?.id === state.profile?.id ? state.profile?.avatar_url : null);
-    const avatarUrlB = memberB?.avatar_url || (memberB?.id === state.profile?.id ? state.profile?.avatar_url : null);
-    const avatarA = avatarUrlA
-      ? `<img src="${avatarUrlA}" class="filter-avatar" alt="">`
-      : `<div class="filter-avatar filter-avatar-initials">${e((memberA?.display_name || 'А')[0])}</div>`;
-    const avatarB = avatarUrlB
-      ? `<img src="${avatarUrlB}" class="filter-avatar" alt="">`
-      : `<div class="filter-avatar filter-avatar-initials">${e((memberB?.display_name || 'П')[0])}</div>`;
+    const selectedMemberLabel = filterBy === memberA?.id
+      ? memberDisplayLabel(memberA)
+      : (filterBy === memberB?.id ? memberDisplayLabel(memberB) : null);
+    const memberChip = (m) => {
+      const label = memberDisplayLabel(m);
+      const avatarUrl = m.avatar_url || (m.id === state.profile?.id ? state.profile?.avatar_url : null);
+      const avatar = avatarUrl
+        ? `<img src="${avatarUrl}" class="filter-avatar" alt="">`
+        : `<div class="filter-avatar filter-avatar-initials">${e(label[0] || '')}</div>`;
+      return `<button class="filter-chip ${filterBy === m.id ? 'active' : ''}" data-filter="${m.id}">${avatar} ${e(label)}</button>`;
+    };
+    const memberChips = [memberA, memberB].filter(Boolean).map(memberChip);
+    if (memberChips.length < 2) {
+      memberChips.push(`<button class="filter-chip" data-filter="${MISSING_PARTNER_ID}" data-disabled="true">${t('home.partnerNotJoined')}</button>`);
+    }
     app.innerHTML = `
       <div class="page-enter">
         <div class="header"><div><div class="header-title">${t('analytics.title')}</div><div class="header-sub">${formatMonth(month)}</div></div></div>
         <div class="filter-sticky">
           <div class="filter-bar" style="padding: 8px 16px 12px;">
             <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
-            <button class="filter-chip ${filterBy === (memberA?.id || MISSING_ANDREI_ID) ? 'active' : ''}" data-filter="${memberA?.id || MISSING_ANDREI_ID}" ${memberA ? '' : 'data-disabled="true"'}>${avatarA} ${labelA}</button>
-            <button class="filter-chip ${filterBy === (memberB?.id || MISSING_POLINA_ID) ? 'active' : ''}" data-filter="${memberB?.id || MISSING_POLINA_ID}" ${memberB ? '' : 'data-disabled="true"'}>${avatarB} ${labelB}</button>
+            ${memberChips.join('\n            ')}
           </div>
         </div>
         <div class="stats-grid">
@@ -214,7 +213,7 @@ export function registerAnalyticsRoute() {
     app.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (chip.dataset.disabled === 'true') {
-          showToast(t('home.memberNotJoined', { name: 'Полина' }));
+          showToast(t('home.partnerNotJoined'));
           return;
         }
         const selected = chip.dataset.filter;

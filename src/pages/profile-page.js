@@ -1,6 +1,6 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
+import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
 import { LANG_LABELS, getLang, setLang, t } from '../lib/i18n.js';
@@ -217,7 +217,9 @@ export function registerProfileRoute() {
           ` : ''}
           <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>${t('profile.themeLabel')} <strong id="theme-current">${themeLabel(getThemePref())}</strong></span></div>
           <div class="profile-menu-item" id="btn-lang">${icon('globe', 20)}<span>${t('profile.languageLabel')} <strong id="lang-current">${LANG_LABELS[getLang()]}</strong></span></div>
+          ${state.couple ? `<div class="profile-menu-item" id="btn-export-csv">${icon('copy', 20)}<span>${t('profile.exportCsv')}</span></div>` : ''}
           <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>${t('profile.logout')}</span></div>
+          <div class="profile-menu-item danger" id="btn-delete-account">${icon('x', 20)}<span>${t('profile.deleteAccount')}</span></div>
         </div>
       </div>
       ${renderTabBar()}
@@ -358,6 +360,67 @@ export function registerProfileRoute() {
       });
     });
     document.getElementById('btn-settings')?.addEventListener('click', showCoupleSettingsModal);
+    document.getElementById('btn-export-csv')?.addEventListener('click', async () => {
+      try {
+        const rows = await fetchAllExpensesForExport(state.couple.id);
+        const header = ['date', 'description', 'category', 'goal', 'amount', 'currency', 'split', 'paid_by'];
+        const csvEscape = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+        const csv = [header.join(',')].concat(rows.map((r) => [
+          r.expense_date,
+          r.description,
+          r.categories?.name || '',
+          r.goal_contributions?.[0]?.goals?.name || '',
+          r.amount,
+          r.currency,
+          r.split,
+          r.paid_by_snapshot_name || '',
+        ].map(csvEscape).join(','))).join('\n');
+        const file = new File(['﻿' + csv], 'couple-expenses.csv', { type: 'text/csv' });
+        if (navigator.canShare?.({ files: [file] })) {
+          try { await navigator.share({ files: [file] }); } catch { /* отменили шаринг */ }
+        } else {
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'couple-expenses.csv';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+      } catch (err) {
+        showToast(t('common.error', { msg: getReadableError(err) }));
+      }
+    });
+    document.getElementById('btn-delete-account')?.addEventListener('click', () => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+      backdrop.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          <div class="modal-title">${t('profile.deleteAccount')}</div>
+          <p style="font-size:14px; color:var(--c-text-secondary); margin-bottom:16px;">${t('profile.deleteAccountWarning')}</p>
+          <button class="btn btn-danger" id="btn-confirm-delete">${t('profile.deleteAccountConfirm')}</button>
+          <button class="btn btn-secondary" style="margin-top:8px;" id="btn-cancel-delete">${t('common.cancel')}</button>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      enableModalSwipe(backdrop);
+      document.getElementById('btn-cancel-delete').onclick = () => backdrop.remove();
+      document.getElementById('btn-confirm-delete').onclick = async () => {
+        const btn = document.getElementById('btn-confirm-delete');
+        btn.disabled = true;
+        try {
+          await deleteMyAccount();
+          localStorage.clear();
+          setState({ user: null, profile: null, couple: null });
+          navigate('/auth');
+          backdrop.remove();
+          showToast(t('profile.accountDeleted'));
+        } catch (err) {
+          showToast(t('common.error', { msg: getReadableError(err) }));
+          btn.disabled = false;
+        }
+      };
+    });
     document.getElementById('btn-logout').onclick = async () => {
       await signOut();
       setState({ user: null, profile: null, couple: null });

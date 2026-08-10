@@ -1,6 +1,6 @@
 // ---- i18n: словари ru/en + t()/getLang()/setLang() ----
 // Язык хранится в localStorage (ce_lang), смена языка перерисовывает всё через reload.
-// ВАЖНО: канонические имена (Андрей/Полина), значения из БД и diagStep/console-сообщения
+// ВАЖНО: имена участников (profiles.display_name), значения из БД и diagStep/console-сообщения
 // здесь не участвуют — переводится только пользовательский UI.
 
 const LANG_KEY = 'ce_lang';
@@ -41,6 +41,7 @@ const ru = {
   'common.undo': 'Отменить',
   'common.shared': 'Общее',
   'common.member': 'Участник',
+  'common.partner': 'Партнёр',
   'common.copy': 'Копировать',
   'common.copied': 'Скопировано',
   'common.apply': 'Применить',
@@ -76,7 +77,7 @@ const ru = {
   'setup.title': 'Настройка пары',
   'setup.subtitle': 'Создайте общее пространство или присоединитесь к партнёру',
   'setup.yourName': 'Ваше имя',
-  'setup.namePlaceholder': 'Андрей',
+  'setup.namePlaceholder': 'Ваше имя',
   'setup.createTitle': 'Создать пару',
   'setup.createText': 'Получите ссылку-приглашение для партнёра',
   'setup.joinTitle': 'Присоединиться',
@@ -124,7 +125,7 @@ const ru = {
   'home.recurringNotCreated': 'Расход добавлен, но шаблон повторения не создан: {msg}',
   'home.addUndone': 'Добавление отменено',
   'home.undoFailed': 'Не удалось отменить: {msg}',
-  'home.memberNotJoined': '{name} еще не присоединился(ась) к паре',
+  'home.partnerNotJoined': 'Партнёр не присоединился',
   'home.allCategories': 'Все категории',
   'home.amountFrom': 'Сумма от',
   'home.amountTo': 'Сумма до',
@@ -223,6 +224,16 @@ const ru = {
   'home.goalNone': 'Без цели',
   'home.savedToGoal': 'Отложено на «{name}»',
   'home.savingLabel': 'Накопление',
+  'home.balanceTitle': 'Баланс пары',
+  'home.balanceOwes': '{from} должен(на) {to}',
+  'home.balanceEven': 'Вы в расчёте 🎉',
+  'home.settleUp': 'Рассчитаться',
+  'home.settledToast': 'Взаиморасчёт записан',
+  'profile.exportCsv': 'Экспорт расходов (CSV)',
+  'profile.deleteAccount': 'Удалить аккаунт',
+  'profile.deleteAccountWarning': 'Аккаунт и доступ к данным пары будут удалены безвозвратно. Общие записи останутся у партнёра.',
+  'profile.deleteAccountConfirm': 'Удалить навсегда',
+  'profile.accountDeleted': 'Аккаунт удалён',
 };
 
 const en = {
@@ -259,6 +270,7 @@ const en = {
   'common.undo': 'Undo',
   'common.shared': 'Shared',
   'common.member': 'Member',
+  'common.partner': 'Partner',
   'common.copy': 'Copy',
   'common.copied': 'Copied',
   'common.apply': 'Apply',
@@ -294,7 +306,7 @@ const en = {
   'setup.title': 'Couple setup',
   'setup.subtitle': 'Create a shared space or join your partner',
   'setup.yourName': 'Your name',
-  'setup.namePlaceholder': 'Andrei',
+  'setup.namePlaceholder': 'Your name',
   'setup.createTitle': 'Create a couple',
   'setup.createText': 'Get an invite link for your partner',
   'setup.joinTitle': 'Join',
@@ -342,7 +354,7 @@ const en = {
   'home.recurringNotCreated': 'Expense added, but the recurring template was not created: {msg}',
   'home.addUndone': 'Expense removed',
   'home.undoFailed': 'Could not undo: {msg}',
-  'home.memberNotJoined': '{name} has not joined the couple yet',
+  'home.partnerNotJoined': "Partner hasn't joined",
   'home.allCategories': 'All categories',
   'home.amountFrom': 'Amount from',
   'home.amountTo': 'Amount to',
@@ -441,6 +453,16 @@ const en = {
   'home.goalNone': 'No goal',
   'home.savedToGoal': 'Saved to “{name}”',
   'home.savingLabel': 'Saving',
+  'home.balanceTitle': 'Couple balance',
+  'home.balanceOwes': '{from} owes {to}',
+  'home.balanceEven': 'You are even 🎉',
+  'home.settleUp': 'Settle up',
+  'home.settledToast': 'Settlement recorded',
+  'profile.exportCsv': 'Export expenses (CSV)',
+  'profile.deleteAccount': 'Delete account',
+  'profile.deleteAccountWarning': 'Your account and access to the couple data will be permanently deleted. Shared records remain with your partner.',
+  'profile.deleteAccountConfirm': 'Delete forever',
+  'profile.accountDeleted': 'Account deleted',
 };
 
 const dictionaries = { ru, en };

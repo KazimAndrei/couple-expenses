@@ -37,12 +37,7 @@ export function registerAuthSetupRoutes() {
 
   route('/auth', async (app) => {
     app.innerHTML = `
-      <div class="welcome-splash" id="welcome-splash">
-        <h1 class="welcome-title">CoupleExpenses</h1>
-        <img src="/welcome.png" alt="" class="welcome-photo" onerror="this.style.display='none'">
-        <div class="welcome-tap-hint">${t('auth.tapToSignIn')}</div>
-      </div>
-      <div class="auth-page page-enter" id="auth-content" style="display:none;">
+      <div class="auth-page page-enter" id="auth-content">
         <div class="auth-logo">${icon('heart', 48, 'var(--c-accent)')}</div>
         <div class="auth-title">CoupleExpenses</div>
         <div class="auth-sub">${t('auth.subtitle')}</div>
@@ -68,11 +63,6 @@ export function registerAuthSetupRoutes() {
         </div>
       </div>
     `;
-    document.getElementById('welcome-splash').addEventListener('click', () => {
-      document.getElementById('welcome-splash').style.display = 'none';
-      document.getElementById('auth-content').style.display = 'block';
-    });
-
     document.getElementById('auth-lang').addEventListener('change', (ev) => {
       setLang(ev.target.value); // сохранит выбор и перезагрузит приложение на новом языке
     });

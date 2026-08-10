@@ -357,6 +357,24 @@ export async function deleteIncomeEntry(id) {
   if (error) throw error;
 }
 
+// ---- Export ----
+export async function fetchAllExpensesForExport(coupleId) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('expense_date, description, amount, currency, split, paid_by_snapshot_name, categories(name), goal_contributions(goals(name))')
+    .eq('couple_id', coupleId)
+    .order('expense_date', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+// ---- Account deletion (App Store 5.1.1v) ----
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) throw error;
+  await supabase.auth.signOut().catch(() => { /* сессия уже мертва после удаления */ });
+}
+
 // ---- Analytics helpers ----
 export async function getMonthlyTotals(coupleId, month) {
   const { data, error } = await supabase
@@ -381,12 +399,22 @@ export async function getBalance(coupleId) {
   return data || [];
 }
 
+export async function getSettlements(coupleId) {
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('settled_by, amount')
+    .eq('couple_id', coupleId);
+  if (error) throw error;
+  return data || [];
+}
+
 // ---- Settlement helpers ----
-export async function addSettlement(coupleId, amount, note = '') {
+// settledBy — кто погасил долг (должник); по умолчанию текущий юзер
+export async function addSettlement(coupleId, amount, note = '', settledBy = null) {
   const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('settlements')
-    .insert({ couple_id: coupleId, settled_by: user.id, amount, note })
+    .insert({ couple_id: coupleId, settled_by: settledBy || user.id, amount, note })
     .select().single();
   if (error) throw error;
   return data;

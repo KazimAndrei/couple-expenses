@@ -24,7 +24,6 @@ registerProfileRoute();
 function renderBootLoader(app) {
   app.innerHTML = `
     <div class="loading boot-video-wrap">
-      <video class="boot-video-bg" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
       <video class="boot-video" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
     </div>
   `;

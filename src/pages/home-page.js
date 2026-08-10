@@ -1,6 +1,6 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
+import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
 import { CURRENCIES, availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
@@ -9,11 +9,10 @@ import { loadAll, loadExpenses } from '../services/data-loader.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import {
-  MISSING_ANDREI_ID,
-  MISSING_POLINA_ID,
+  MISSING_PARTNER_ID,
   expenseJoinedProfileName,
   filterExpensesByMemberChip,
-  pickPayerUiMembers,
+  memberDisplayLabel,
   resolveMemberSides,
   resolvePayerLabel,
   resolvePayerSide,
@@ -68,12 +67,11 @@ async function showAddExpenseModal() {
     goals = (await getGoals(couple.id)).filter((g) => !g.completed);
   } catch { /* цели не критичны для формы расхода */ }
   const lastPrefs = readLastExpensePrefs();
-  const { andrei: memberAndrei, polina: memberPolina } = pickPayerUiMembers(members, profile?.id);
-  const andreiNameSafe = 'Андрей';
-  const polinaNameSafe = 'Полина';
+  const sides = resolveMemberSides(members);
+  const payerMembers = [sides.memberA, sides.memberB].filter(Boolean);
   const defaultCategoryId = categories.find(c => c.id === lastPrefs.categoryId)?.id || categories[0]?.id;
   const defaultDate = todayStr();
-  const defaultPayerId = lastPrefs.payerId === 'shared' ? 'shared' : ([memberAndrei?.id, memberPolina?.id].includes(lastPrefs.payerId) ? lastPrefs.payerId : 'shared');
+  const defaultPayerId = lastPrefs.payerId === 'shared' ? 'shared' : (payerMembers.some((m) => m.id === lastPrefs.payerId) ? lastPrefs.payerId : 'shared');
 
   const currSymbol = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '$';
   const backdrop = document.createElement('div');
@@ -131,16 +129,16 @@ async function showAddExpenseModal() {
           <div class="payer-option ${!defaultPayerId || defaultPayerId === 'shared' ? 'selected' : ''}" data-id="shared">
             <div class="payer-avatar payer-avatar-initials" style="background:var(--c-accent-dark);">${icon('heart', 14, '#fff')}</div><span>${t('common.shared')}</span>
           </div>
-          <div class="payer-option ${defaultPayerId === memberAndrei?.id ? 'selected' : ''} ${memberAndrei ? '' : 'disabled'}" data-id="${memberAndrei?.id || ''}" data-disabled="${memberAndrei ? 'false' : 'true'}">
-            ${(memberAndrei?.avatar_url || (memberAndrei?.id === profile?.id ? profile?.avatar_url : null))
-              ? `<img src="${memberAndrei?.avatar_url || profile?.avatar_url}" class="payer-avatar" alt="">`
-              : `<div class="payer-avatar payer-avatar-initials">${e((memberAndrei?.display_name || 'А')[0])}</div>`}<span>${andreiNameSafe}</span>
-          </div>
-          <div class="payer-option ${defaultPayerId === memberPolina?.id ? 'selected' : ''} ${memberPolina ? '' : 'disabled'}" data-id="${memberPolina?.id || ''}" data-disabled="${memberPolina ? 'false' : 'true'}">
-            ${(memberPolina?.avatar_url || (memberPolina?.id === profile?.id ? profile?.avatar_url : null))
-              ? `<img src="${memberPolina?.avatar_url || profile?.avatar_url}" class="payer-avatar" alt="">`
-              : `<div class="payer-avatar payer-avatar-initials">${e((memberPolina?.display_name || 'П')[0])}</div>`}<span>${polinaNameSafe}</span>
-          </div>
+          ${payerMembers.map((m) => {
+            const label = memberDisplayLabel(m);
+            const avatarUrl = m.avatar_url || (m.id === profile?.id ? profile?.avatar_url : null);
+            return `
+          <div class="payer-option ${defaultPayerId === m.id ? 'selected' : ''}" data-id="${m.id}">
+            ${avatarUrl
+              ? `<img src="${avatarUrl}" class="payer-avatar" alt="">`
+              : `<div class="payer-avatar payer-avatar-initials">${e(label[0] || '')}</div>`}<span>${e(label)}</span>
+          </div>`;
+          }).join('')}
         </div>
       </div>
       <div class="form-group">
@@ -236,10 +234,6 @@ async function showAddExpenseModal() {
   });
   backdrop.querySelectorAll('.payer-option').forEach(opt => {
     opt.addEventListener('click', () => {
-      if (opt.dataset.disabled === 'true') {
-        showToast(t('home.memberNotJoined', { name: opt.textContent.includes('Полина') ? 'Полина' : 'Андрей' }));
-        return;
-      }
       backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
     });
@@ -459,18 +453,19 @@ function showExpenseActionsModal(expense, app) {
           <select class="form-input" id="edit-paid-by">
             <option value="shared" ${expense.split === 'equal' ? 'selected' : ''}>${t('common.shared')}</option>
             ${(() => {
-              const { andrei: mA, polina: mB, sides } = pickPayerUiMembers(members, profile?.id);
+              const sides = resolveMemberSides(members);
+              const { memberA: mA, memberB: mB } = sides;
               const expSide = expense.split !== 'equal'
                 ? resolvePayerSide(expense.paid_by, sides, expenseJoinedProfileName(expense))
                 : null;
               const opts = [];
               if (mA) {
                 const sel = expense.split !== 'equal' && (expense.paid_by === mA.id || expSide === 'a');
-                opts.push(`<option value="${mA.id}" ${sel ? 'selected' : ''}>${e('Андрей')}</option>`);
+                opts.push(`<option value="${mA.id}" ${sel ? 'selected' : ''}>${e(memberDisplayLabel(mA))}</option>`);
               }
               if (mB) {
                 const sel = expense.split !== 'equal' && (expense.paid_by === mB.id || expSide === 'b');
-                opts.push(`<option value="${mB.id}" ${sel ? 'selected' : ''}>${e('Полина')}</option>`);
+                opts.push(`<option value="${mB.id}" ${sel ? 'selected' : ''}>${e(memberDisplayLabel(mB))}</option>`);
               }
               const used = new Set([mA?.id, mB?.id].filter(Boolean));
               for (const m of members || []) {
@@ -545,10 +540,47 @@ function showExpenseActionsModal(expense, app) {
   };
 }
 
+// Нетто-долг между участниками: balance_between_partners за вычетом взаиморасчётов.
+// Возвращает { from, to, amount } (кто кому должен) или null (в расчёте / пара неполная).
+function computeCoupleDebt(sides) {
+  const { memberA, memberB } = sides;
+  if (!memberA || !memberB) return null;
+  const { balanceRows = [], settlements = [] } = getState();
+  const owedTo = (id) => balanceRows
+    .filter((r) => r.paid_by === id)
+    .reduce((s, r) => s + parseFloat(r.amount_owed_to_payer || 0), 0);
+  const settledBy = (id) => settlements
+    .filter((s) => s.settled_by === id)
+    .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
+  // Долг B перед A = сколько B должен A минус что B уже вернул (и наоборот)
+  const net = (owedTo(memberA.id) - settledBy(memberB.id)) - (owedTo(memberB.id) - settledBy(memberA.id));
+  if (Math.abs(net) < 1) return null;
+  return net > 0
+    ? { from: memberB, to: memberA, amount: net }
+    : { from: memberA, to: memberB, amount: -net };
+}
+
+function renderBalanceCard(sides, couple) {
+  if (!sides.memberA || !sides.memberB) return '';
+  const debt = computeCoupleDebt(sides);
+  return `
+    <div class="balance-card">
+      <div class="summary-label">${t('home.balanceTitle')}</div>
+      ${debt ? `
+        <div class="balance-row">
+          <div class="balance-text">${t('home.balanceOwes', { from: e(memberDisplayLabel(debt.from)), to: e(memberDisplayLabel(debt.to)) })}
+            <strong>${formatMoney(debt.amount, couple?.currency)}</strong></div>
+          <button class="btn btn-secondary btn-small" id="btn-settle-up">${t('home.settleUp')}</button>
+        </div>
+      ` : `<div class="balance-text balance-even">${t('home.balanceEven')}</div>`}
+    </div>
+  `;
+}
+
 function renderHome(app) {
   const { expenses, currentMonth: month, couple, profile, members, filterBy, searchQuery } = getState();
-  const sides = resolveMemberSides(members, profile?.id);
-  const { memberA, memberB, andreiIds, polinaIds } = sides;
+  const sides = resolveMemberSides(members);
+  const { memberA, memberB } = sides;
   const filtered = filterExpensesByMemberChip(expenses, filterBy, sides);
   const filteredAdvanced = applyAdvancedFilters(filtered, getState());
   // Расходы-накопления (отложено в цель) не считаем тратами месяца
@@ -557,19 +589,21 @@ function renderHome(app) {
   const total = spendable.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
   const totalAll = expenses.filter((x) => !isGoalExpense(x)).reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
   const grouped = groupByDate(filteredAdvanced);
-  const labelA = 'Андрей';
-  const labelB = 'Полина';
-  const selectedMemberLabel = filterBy === MISSING_ANDREI_ID
-    ? 'Андрей'
-    : (filterBy === MISSING_POLINA_ID ? 'Полина' : (filterBy === memberA?.id ? 'Андрей' : (filterBy === memberB?.id ? 'Полина' : t('home.totalLabel'))));
-  const avatarUrlA = memberA?.avatar_url || (memberA?.id === profile?.id ? profile?.avatar_url : null);
-  const avatarUrlB = memberB?.avatar_url || (memberB?.id === profile?.id ? profile?.avatar_url : null);
-  const avatarA = avatarUrlA
-    ? `<img src="${avatarUrlA}" class="filter-avatar" alt="">`
-    : `<div class="filter-avatar filter-avatar-initials">${e((memberA?.display_name || 'А')[0])}</div>`;
-  const avatarB = avatarUrlB
-    ? `<img src="${avatarUrlB}" class="filter-avatar" alt="">`
-    : `<div class="filter-avatar filter-avatar-initials">${e((memberB?.display_name || 'П')[0])}</div>`;
+  const selectedMemberLabel = filterBy === memberA?.id
+    ? memberDisplayLabel(memberA)
+    : (filterBy === memberB?.id ? memberDisplayLabel(memberB) : t('home.totalLabel'));
+  const memberChip = (m) => {
+    const label = memberDisplayLabel(m);
+    const avatarUrl = m.avatar_url || (m.id === profile?.id ? profile?.avatar_url : null);
+    const avatar = avatarUrl
+      ? `<img src="${avatarUrl}" class="filter-avatar" alt="">`
+      : `<div class="filter-avatar filter-avatar-initials">${e(label[0] || '')}</div>`;
+    return `<button class="filter-chip ${filterBy === m.id ? 'active' : ''}" data-filter="${m.id}">${avatar} ${e(label)}</button>`;
+  };
+  const memberChips = [memberA, memberB].filter(Boolean).map(memberChip);
+  if (memberChips.length < 2) {
+    memberChips.push(`<button class="filter-chip" data-filter="${MISSING_PARTNER_ID}" data-disabled="true">${t('home.partnerNotJoined')}</button>`);
+  }
   app.innerHTML = `
     <div class="page-enter">
       <div class="header">
@@ -590,8 +624,7 @@ function renderHome(app) {
       <div class="filter-sticky">
         <div class="filter-bar">
           <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
-          <button class="filter-chip ${filterBy === (memberA?.id || MISSING_ANDREI_ID) ? 'active' : ''}" data-filter="${memberA?.id || MISSING_ANDREI_ID}" ${memberA ? '' : 'data-disabled="true"'}>${avatarA} ${labelA}</button>
-          <button class="filter-chip ${filterBy === (memberB?.id || MISSING_POLINA_ID) ? 'active' : ''}" data-filter="${memberB?.id || MISSING_POLINA_ID}" ${memberB ? '' : 'data-disabled="true"'}>${avatarB} ${labelB}</button>
+          ${memberChips.join('\n          ')}
         </div>
       </div>
       <div class="income-card" id="income-card">
@@ -610,6 +643,7 @@ function renderHome(app) {
         <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
         <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: spendable.length })}</div>
       </div>
+      ${renderBalanceCard(sides, couple)}
       <div class="tx-section">
         ${grouped.length === 0 ? `
           <div class="empty-state">
@@ -662,19 +696,28 @@ function renderHome(app) {
     ${renderTabBar()}
   `;
   document.getElementById('add-exp-btn').onclick = showAddExpenseModal;
+  document.getElementById('btn-settle-up')?.addEventListener('click', async () => {
+    const debt = computeCoupleDebt(resolveMemberSides(getState().members));
+    if (!debt) return;
+    try {
+      await addSettlement(getState().couple.id, Math.round(debt.amount * 100) / 100, 'settle up', debt.from.id);
+      showToast(t('home.settledToast'));
+      await loadAll();
+      if (getCurrentPath() === '/') renderHome(document.getElementById('app'));
+    } catch (err) {
+      showToast(t('common.error', { msg: getReadableError(err) }));
+    }
+  });
   document.getElementById('btn-edit-income')?.addEventListener('click', () => {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
     const incomeEntries = getState().incomeEntries || [];
     const members = getState().members || [];
-    const sides = resolveMemberSides(members, profile?.id);
     const authorLabel = (uid) => {
       const m = members.find((x) => x.id === uid);
       if (!m) return '—';
-      if (m.id === sides.memberA?.id) return 'Андрей';
-      if (m.id === sides.memberB?.id) return 'Полина';
-      return m.display_name || t('common.member');
+      return memberDisplayLabel(m);
     };
     backdrop.innerHTML = `
       <div class="modal-sheet">
@@ -730,7 +773,7 @@ function renderHome(app) {
   document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.onclick = () => {
       if (chip.dataset.disabled === 'true') {
-        showToast(t('home.memberNotJoined', { name: 'Полина' }));
+        showToast(t('home.partnerNotJoined'));
         return;
       }
       const filter = chip.dataset.filter;

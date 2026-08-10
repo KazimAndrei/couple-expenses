@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MISSING_ANDREI_ID,
-  MISSING_POLINA_ID,
+  MISSING_PARTNER_ID,
   filterExpensesByMemberChip,
-  pickPayerUiMembers,
+  memberDisplayLabel,
   resolveMemberSides,
   resolvePayerLabel,
   resolvePayerSide,
@@ -11,51 +10,56 @@ import {
 } from './member-filters.js';
 
 const members = [
-  { id: 'id-a', display_name: 'Андрей', avatar_url: null },
-  { id: 'id-b', display_name: 'Полина', avatar_url: null },
+  { id: 'id-a', display_name: 'Аня', avatar_url: null, created_at: '2026-01-01' },
+  { id: 'id-b', display_name: 'Борис', avatar_url: null, created_at: '2026-01-02' },
 ];
 
 describe('resolveMemberSides', () => {
-  it('maps names to Andrei/Polina id sets', () => {
-    const sides = resolveMemberSides(members, 'id-a');
+  it('первый по created_at = memberA, второй = memberB', () => {
+    const sides = resolveMemberSides(members);
     expect(sides.memberA?.id).toBe('id-a');
     expect(sides.memberB?.id).toBe('id-b');
-    expect(sides.andreiIds.has('id-a')).toBe(true);
-    expect(sides.polinaIds.has('id-b')).toBe(true);
+    expect(sides.pairOrder).toEqual(['id-a', 'id-b']);
   });
 
-  it('does not put Polina in Andrei slot when Andrei name does not match', () => {
-    const m = [
-      { id: 'p', display_name: 'Полина', avatar_url: null },
-      { id: 'a', display_name: 'User', avatar_url: null },
-    ];
-    const sides = resolveMemberSides(m, 'p');
-    expect(sides.memberA?.id).toBe('a');
-    expect(sides.memberB?.id).toBe('p');
+  it('порядок стабилен независимо от порядка массива', () => {
+    const sides = resolveMemberSides([members[1], members[0]]);
+    expect(sides.memberA?.id).toBe('id-a');
+    expect(sides.memberB?.id).toBe('id-b');
+  });
+
+  it('неполная пара: один участник → memberB = null', () => {
+    const sides = resolveMemberSides([members[0]]);
+    expect(sides.memberA?.id).toBe('id-a');
+    expect(sides.memberB).toBe(null);
+  });
+
+  it('пустой список участников', () => {
+    const sides = resolveMemberSides([]);
+    expect(sides.memberA).toBe(null);
+    expect(sides.memberB).toBe(null);
   });
 });
 
-describe('pickPayerUiMembers', () => {
-  it('returns one Andrei when two profiles differ only by script', () => {
-    const m = [
-      { id: 'x', display_name: 'Andrei', avatar_url: 'https://a.png' },
-      { id: 'y', display_name: 'Андрей', avatar_url: null },
-      { id: 'z', display_name: 'Полина', avatar_url: null },
-    ];
-    const { andrei, polina } = pickPayerUiMembers(m, 'z');
-    expect(andrei?.id).toBe('x');
-    expect(polina?.id).toBe('z');
+describe('memberDisplayLabel', () => {
+  it('возвращает display_name', () => {
+    expect(memberDisplayLabel(members[0])).toBe('Аня');
+  });
+
+  it('fallback на нейтральное «Партнёр» без имени', () => {
+    expect(memberDisplayLabel({ id: 'x', display_name: '' })).toBe('Партнёр');
+    expect(memberDisplayLabel(null)).toBe('Партнёр');
   });
 });
 
 describe('filterExpensesByMemberChip (manual checklist as tests)', () => {
-  const sides = resolveMemberSides(members, 'id-a');
+  const sides = resolveMemberSides(members);
   const expenses = [
     { id: '1', split: 'equal', paid_by: 'id-a', amount: '100', description: 'Общее' },
-    { id: '2', split: 'full_payer', paid_by: 'id-a', amount: '50', description: 'Андрей платит' },
-    { id: '3', split: 'full_payer', paid_by: 'id-b', amount: '30', description: 'Полина платит' },
-    { id: '4', split: 'full_payer', paid_by: 'old-andrei-uuid', amount: '20', description: 'Legacy', profiles: { display_name: 'Андрей' } },
-    { id: '5', split: 'full_payer', paid_by: 'old-polina-uuid', amount: '15', description: 'Legacy', profiles: { display_name: 'Polina' } },
+    { id: '2', split: 'full_payer', paid_by: 'id-a', amount: '50', description: 'Платит первый' },
+    { id: '3', split: 'full_payer', paid_by: 'id-b', amount: '30', description: 'Платит второй' },
+    { id: '4', split: 'full_payer', paid_by: 'old-a-uuid', amount: '20', description: 'Legacy', profiles: { display_name: 'Аня' } },
+    { id: '5', split: 'full_payer', paid_by: 'old-b-uuid', amount: '15', description: 'Legacy', profiles: { display_name: 'Борис' } },
   ];
 
   it('Все: показывает все расходы', () => {
@@ -63,116 +67,107 @@ describe('filterExpensesByMemberChip (manual checklist as tests)', () => {
     expect(filterExpensesByMemberChip(expenses, undefined, sides)).toHaveLength(5);
   });
 
-  it('Андрей: full_payer Андрея + legacy UUID с display_name Андрей; Общее не попадает', () => {
+  it('memberA: full_payer участника + legacy UUID с его display_name; Общее не попадает', () => {
     const out = filterExpensesByMemberChip(expenses, sides.memberA?.id, sides);
     expect(out.map((e) => e.id)).toEqual(['2', '4']);
   });
 
-  it('Полина: full_payer Полины + legacy UUID с display_name Polina; Общее не попадает', () => {
+  it('memberB: full_payer участника + legacy UUID с его display_name; Общее не попадает', () => {
     const out = filterExpensesByMemberChip(expenses, sides.memberB?.id, sides);
     expect(out.map((e) => e.id)).toEqual(['3', '5']);
   });
 
-  it('плейсхолдеры отключённых чипов дают пустой список', () => {
-    expect(filterExpensesByMemberChip(expenses, MISSING_ANDREI_ID, sides)).toEqual([]);
-    expect(filterExpensesByMemberChip(expenses, MISSING_POLINA_ID, sides)).toEqual([]);
+  it('плейсхолдер не присоединившегося партнёра даёт пустой список', () => {
+    expect(filterExpensesByMemberChip(expenses, MISSING_PARTNER_ID, sides)).toEqual([]);
+  });
+
+  it('неполная пара: фильтр по единственному участнику работает', () => {
+    const soloSides = resolveMemberSides([members[0]]);
+    const out = filterExpensesByMemberChip(expenses, soloSides.memberA?.id, soloSides);
+    expect(out.map((e) => e.id)).toEqual(['2', '4']);
+  });
+
+  it('legacy filterBy (не id участника) фильтрует по точному paid_by', () => {
+    const out = filterExpensesByMemberChip(expenses, 'old-a-uuid', sides);
+    expect(out.map((e) => e.id)).toEqual(['4']);
   });
 });
 
 describe('resolvePayerLabel', () => {
-  const sides = resolveMemberSides(members, 'id-a');
+  const sides = resolveMemberSides(members);
 
   it('equal → Общее', () => {
     expect(resolvePayerLabel({ split: 'equal', paid_by: 'id-a' }, sides)).toBe('Общее');
   });
 
-  it('known andreiId → Андрей', () => {
-    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-a' }, sides)).toBe('Андрей');
+  it('известный id memberA → его display_name', () => {
+    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-a' }, sides)).toBe('Аня');
   });
 
-  it('known polinaId → Полина', () => {
-    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-b' }, sides)).toBe('Полина');
+  it('известный id memberB → его display_name', () => {
+    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-b' }, sides)).toBe('Борис');
   });
 
-  it('unknown paid_by but profiles.display_name contains "Андрей" → Андрей', () => {
-    const exp = { split: 'full_payer', paid_by: 'old-uuid', profiles: { display_name: 'Андрей' } };
-    expect(resolvePayerLabel(exp, sides)).toBe('Андрей');
+  it('неизвестный paid_by, но profiles.display_name совпадает с участником → имя участника', () => {
+    const exp = { split: 'full_payer', paid_by: 'old-uuid', profiles: { display_name: 'Аня' } };
+    expect(resolvePayerLabel(exp, sides)).toBe('Аня');
   });
 
-  it('unknown paid_by and no display_name → empty string', () => {
-    const exp = { split: 'full_payer', paid_by: 'old-uuid' };
-    expect(resolvePayerLabel(exp, sides)).toBe('');
+  it('неизвестный paid_by с чужим display_name → показываем joined-имя как есть', () => {
+    const exp = { split: 'full_payer', paid_by: 'old-uuid', profiles: { display_name: 'Гость' } };
+    expect(resolvePayerLabel(exp, sides)).toBe('Гость');
   });
 
-  it('Полина с отображаемым именем «Личное» — full_payer показывает Полина', () => {
+  it('участник без display_name → нейтральный fallback «Партнёр»', () => {
     const m = [
-      { id: 'id-a', display_name: 'Андрей', avatar_url: null },
-      { id: 'id-b', display_name: 'Личное', avatar_url: null },
+      { id: 'id-a', display_name: '', avatar_url: null, created_at: '2026-01-01' },
+      { id: 'id-b', display_name: 'Борис', avatar_url: null, created_at: '2026-01-02' },
     ];
-    const sidesPolina = resolveMemberSides(m, 'id-a');
-    expect(sidesPolina.memberB?.id).toBe('id-b');
-    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-b' }, sidesPolina)).toBe('Полина');
+    const s = resolveMemberSides(m);
+    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-a' }, s)).toBe('Партнёр');
   });
 
-  it('Андрей в профиле «Личное»: у второго участника не показываем сырое «Личное»', () => {
-    const m = [
-      { id: 'id-a', display_name: 'Личное', avatar_url: null, created_at: '2026-01-01' },
-      { id: 'id-b', display_name: 'Полина', avatar_url: null, created_at: '2026-01-02' },
-    ];
-    const sidesFromPolina = resolveMemberSides(m, 'id-b');
-    const exp = {
-      split: 'full_payer',
-      paid_by: 'id-a',
-      profiles: { display_name: 'Личное' },
-    };
-    expect(resolvePayerLabel(exp, sidesFromPolina)).toBe('Андрей');
+  it('удалённый участник: snapshot-имя показывается как есть', () => {
+    const exp = { split: 'full_payer', paid_by: null, paid_by_snapshot_name: 'Вика' };
+    expect(resolvePayerLabel(exp, sides)).toBe('Вика');
+  });
+
+  it('нет никакой информации → пустая строка', () => {
+    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'old-uuid' }, sides)).toBe('');
   });
 
   it('expenseJoinedProfileName: profiles-массив из PostgREST', () => {
     expect(
       expenseJoinedProfileName({
-        profiles: [{ display_name: 'Личное' }],
+        profiles: [{ display_name: 'Аня' }],
       }),
-    ).toBe('Личное');
+    ).toBe('Аня');
   });
 });
 
 describe('resolvePayerSide', () => {
-  const sides = resolveMemberSides(members, 'id-a');
+  const sides = resolveMemberSides(members);
 
   it('null sides → null', () => {
     expect(resolvePayerSide('id-a', null)).toBe(null);
   });
 
-  it('known andreiId → a', () => {
+  it('id memberA → a', () => {
     expect(resolvePayerSide('id-a', sides)).toBe('a');
   });
 
-  it('known polinaId → b', () => {
+  it('id memberB → b', () => {
     expect(resolvePayerSide('id-b', sides)).toBe('b');
   });
 
-  it('unknown UUID + display_name "Андрей" → a', () => {
-    expect(resolvePayerSide('old-uuid', sides, 'Андрей')).toBe('a');
+  it('legacy UUID + display_name участника (без учёта регистра) → его сторона', () => {
+    expect(resolvePayerSide('old-uuid', sides, 'Аня')).toBe('a');
+    expect(resolvePayerSide('old-uuid', sides, 'борис')).toBe('b');
   });
 
-  it('unknown UUID + display_name "polina" → b', () => {
-    expect(resolvePayerSide('old-uuid', sides, 'polina')).toBe('b');
-  });
-
-  it('memberA/memberB id beat overlapping andreiIds/polinaIds', () => {
-    const overlapSides = {
-      memberA: { id: 'u1' },
-      memberB: { id: 'u2' },
-      andreiIds: new Set(['u1', 'u2']),
-      polinaIds: new Set(['u1', 'u2']),
-    };
-    expect(resolvePayerSide('u1', overlapSides)).toBe('a');
-    expect(resolvePayerSide('u2', overlapSides)).toBe('b');
-  });
-
-  it('completely unknown → null', () => {
+  it('совсем неизвестный → null', () => {
     expect(resolvePayerSide('old-uuid', sides)).toBe(null);
     expect(resolvePayerSide('old-uuid', sides, '')).toBe(null);
+    expect(resolvePayerSide('old-uuid', sides, 'Гость')).toBe(null);
   });
 });
