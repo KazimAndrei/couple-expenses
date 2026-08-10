@@ -177,6 +177,21 @@ export async function addExpense(expense) {
   return data;
 }
 
+// Расход «в цель»: атомарно создаёт expense + goal_contribution (RPC).
+// Удаление расхода каскадно снимает contribution и пересчитывает цель.
+export async function addExpenseToGoal({ goal_id, amount, paid_by, split = 'equal', expense_date, description }) {
+  const { data, error } = await supabase.rpc('add_expense_to_goal', {
+    p_goal_id: goal_id,
+    p_amount: amount,
+    p_paid_by: paid_by,
+    p_split: split,
+    p_expense_date: expense_date,
+    p_description: description || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteExpense(id) {
   const { error } = await supabase.from('expenses').delete().eq('id', id);
   if (error) throw error;

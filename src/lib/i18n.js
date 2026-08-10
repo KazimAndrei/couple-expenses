@@ -219,6 +219,8 @@ const ru = {
   'profile.currencyLabel': 'Валюта:',
   'profile.currencyTitle': 'Валюта пары',
   'profile.currencySaved': 'Валюта обновлена',
+  'home.goalLabel': 'Отложить в цель',
+  'home.goalNone': 'Без цели',
 };
 
 const en = {
@@ -433,6 +435,8 @@ const en = {
   'profile.currencyLabel': 'Currency:',
   'profile.currencyTitle': 'Couple currency',
   'profile.currencySaved': 'Currency updated',
+  'home.goalLabel': 'Put into a goal',
+  'home.goalNone': 'No goal',
 };
 
 const dictionaries = { ru, en };

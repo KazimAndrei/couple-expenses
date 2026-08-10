@@ -1,7 +1,7 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
-import { availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
+import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
+import { CURRENCIES, availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -61,8 +61,12 @@ function applyAdvancedFilters(expenses, filters) {
   });
 }
 
-function showAddExpenseModal() {
+async function showAddExpenseModal() {
   const { categories, profile, couple, members } = getState();
+  let goals = [];
+  try {
+    goals = (await getGoals(couple.id)).filter((g) => !g.completed);
+  } catch { /* цели не критичны для формы расхода */ }
   const lastPrefs = readLastExpensePrefs();
   const { andrei: memberAndrei, polina: memberPolina } = pickPayerUiMembers(members, profile?.id);
   const andreiNameSafe = 'Андрей';
@@ -71,7 +75,7 @@ function showAddExpenseModal() {
   const defaultDate = todayStr();
   const defaultPayerId = lastPrefs.payerId === 'shared' ? 'shared' : ([memberAndrei?.id, memberPolina?.id].includes(lastPrefs.payerId) ? lastPrefs.payerId : 'shared');
 
-  const currSymbol = couple?.currency === 'THB' ? '฿' : couple?.currency === 'RUB' ? '₽' : '$';
+  const currSymbol = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '$';
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
@@ -112,6 +116,15 @@ function showAddExpenseModal() {
           </div>
         </div>
       </div>
+      ${goals.length ? `
+      <div class="form-group">
+        <label class="form-label">${t('home.goalLabel')}</label>
+        <select class="form-input" id="exp-goal">
+          <option value="">${t('home.goalNone')}</option>
+          ${goals.map((g) => `<option value="${g.id}">${e(g.name)}</option>`).join('')}
+        </select>
+      </div>
+      ` : ''}
       <div class="form-group">
         <label class="form-label">${t('home.whoPays')}</label>
         <div class="payer-options" style="flex-wrap:wrap;">
@@ -231,6 +244,24 @@ function showAddExpenseModal() {
       opt.classList.add('selected');
     });
   });
+  const goalSelect = document.getElementById('exp-goal');
+  goalSelect?.addEventListener('change', () => {
+    const goal = goals.find((g) => g.id === goalSelect.value);
+    const descInput = document.getElementById('exp-desc');
+    const catGrid = document.getElementById('cat-grid');
+    // Расход в цель фиксируется статьёй с названием цели, категория не участвует
+    if (goal) {
+      if (!descInput.value.trim() || goals.some((g) => g.name === descInput.value.trim())) {
+        descInput.value = goal.name;
+      }
+      catGrid.style.opacity = '0.4';
+      catGrid.style.pointerEvents = 'none';
+    } else {
+      catGrid.style.opacity = '';
+      catGrid.style.pointerEvents = '';
+    }
+  });
+
   document.getElementById('btn-save-exp').onclick = async () => {
     const amount = parseFloat(document.getElementById('exp-amount').value);
     const description = document.getElementById('exp-desc').value.trim();
@@ -238,22 +269,34 @@ function showAddExpenseModal() {
     const payerEl = backdrop.querySelector('.payer-option.selected');
     const date = document.getElementById('exp-date').value;
     const recurring = document.getElementById('exp-recurring').checked;
+    const goalId = goalSelect?.value || null;
     if (!amount || amount <= 0) { showToast(t('common.enterAmount')); return; }
-    if (!description) { showToast(t('home.enterDescription')); return; }
+    if (!description && !goalId) { showToast(t('home.enterDescription')); return; }
     let created = null;
     try {
       const isShared = payerEl?.dataset.id === 'shared';
       const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
-      created = await addExpense({
-        couple_id: couple.id,
-        category_id: categoryEl?.dataset.id,
-        paid_by: paidById,
-        amount,
-        description,
-        split: isShared ? 'equal' : 'full_payer',
-        expense_date: date,
-        currency: couple.currency || 'THB',
-      });
+      if (goalId) {
+        created = await addExpenseToGoal({
+          goal_id: goalId,
+          amount,
+          paid_by: paidById,
+          split: isShared ? 'equal' : 'full_payer',
+          expense_date: date,
+          description,
+        });
+      } else {
+        created = await addExpense({
+          couple_id: couple.id,
+          category_id: categoryEl?.dataset.id,
+          paid_by: paidById,
+          amount,
+          description,
+          split: isShared ? 'equal' : 'full_payer',
+          expense_date: date,
+          currency: couple.currency || 'THB',
+        });
+      }
     } catch (err) {
       showToast(t('common.error', { msg: getReadableError(err) }));
       return;
@@ -271,7 +314,7 @@ function showAddExpenseModal() {
       setState({ expenses: [created, ...stateNow.expenses] });
     }
 
-    if (recurring) {
+    if (recurring && !goalId) {
       try {
         const isShared = payerEl?.dataset.id === 'shared';
         const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
@@ -319,7 +362,6 @@ function showAddExpenseModal() {
       // optimistic insert уже показал расход; перезагрузка случится при следующем переходе/realtime
     }
   };
-  updateSplitPreview();
 }
 
 function showHomeFiltersModal() {
