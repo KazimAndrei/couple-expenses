@@ -5,6 +5,7 @@ import { setState } from './lib/store.js';
 import { currentMonth } from './lib/utils.js';
 import { registerServiceWorker } from './services/pwa.js';
 import { initNativePush } from './services/native-push.js';
+import { initTheme } from './services/theme.js';
 import { exposeToastGlobally } from './services/toast.js';
 import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
 import { registerAuthSetupRoutes } from './pages/auth-setup-page.js';
@@ -20,7 +21,11 @@ registerGoalsRoute();
 registerProfileRoute();
 
 function renderBootLoader(app) {
-  app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  app.innerHTML = `
+    <div class="loading boot-video-wrap">
+      <video class="boot-video" src="/loading.mp4" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true"></video>
+    </div>
+  `;
 }
 
 function renderBootFallback(app) {
@@ -114,6 +119,7 @@ function setupOfflineBanner() {
   update();
 }
 
+initTheme();
 initDiagnostics();
 exposeToastGlobally();
 setupOfflineBanner();

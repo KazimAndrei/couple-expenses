@@ -1,6 +1,7 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
+import { applyTheme, getThemePref, THEME_LABELS } from '../services/theme.js';
 import { escapeHtml, icon } from '../lib/utils.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -203,9 +204,11 @@ export function registerProfileRoute() {
           <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>Изменить имя</span></div>
           <div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>Удалить фото</span></div>
           ${state.couple ? `
-            <div class="profile-menu-item" id="btn-invite">${icon('link', 20)}<span>Код приглашения: <strong>${e(state.couple.invite_code)}</strong></span></div>
+            <div class="profile-menu-item" id="btn-invite">${icon('heart', 20)}<span>Отправить приглашение партнёру</span></div>
+            <div class="profile-menu-item" id="btn-copy-code">${icon('link', 20)}<span>Код приглашения: <strong>${e(state.couple.invite_code)}</strong></span></div>
             <div class="profile-menu-item" id="btn-settings">${icon('settings', 20)}<span>Настройки пары</span></div>
           ` : ''}
+          <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>Тема: <strong id="theme-current">${THEME_LABELS[getThemePref()]}</strong></span></div>
           <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>Выйти</span></div>
         </div>
       </div>
@@ -259,6 +262,35 @@ export function registerProfileRoute() {
           .then(() => showToast('Ссылка скопирована'))
           .catch(() => showToast(state.couple.invite_code));
       }
+    });
+    document.getElementById('btn-copy-code')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(state.couple.invite_code)
+        .then(() => showToast('Код скопирован'))
+        .catch(() => showToast(state.couple.invite_code));
+    });
+    document.getElementById('btn-theme')?.addEventListener('click', () => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+      const current = getThemePref();
+      backdrop.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          <div class="modal-title">Тема оформления</div>
+          ${['system', 'light', 'dark'].map((t) => `
+            <button class="btn ${t === current ? 'btn-primary' : 'btn-secondary'}" data-theme-option="${t}" style="margin-bottom:8px;">${THEME_LABELS[t]}</button>
+          `).join('')}
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      enableModalSwipe(backdrop);
+      backdrop.querySelectorAll('[data-theme-option]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          applyTheme(btn.dataset.themeOption);
+          document.getElementById('theme-current').textContent = THEME_LABELS[btn.dataset.themeOption];
+          backdrop.remove();
+        });
+      });
     });
     document.getElementById('btn-settings')?.addEventListener('click', showCoupleSettingsModal);
     document.getElementById('btn-logout').onclick = async () => {
