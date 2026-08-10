@@ -158,7 +158,7 @@ export async function getExpenses(coupleId, month) {
   const endStr = endDate.toISOString().slice(0, 10);
   const { data, error } = await supabase
     .from('expenses')
-    .select('*, categories(name, icon, color), profiles!paid_by(display_name)')
+    .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name))')
     .eq('couple_id', coupleId)
     .gte('expense_date', startDate)
     .lt('expense_date', endStr)

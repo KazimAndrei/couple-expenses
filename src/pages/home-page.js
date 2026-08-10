@@ -285,6 +285,8 @@ async function showAddExpenseModal() {
           expense_date: date,
           description,
         });
+        // RPC возвращает голую строку expenses — доклеиваем связь для optimistic-рендера как накопления
+        created.goal_contributions = [{ goal_id: goalId, goals: { name: goals.find((g) => g.id === goalId)?.name || description } }];
       } else {
         created = await addExpense({
           couple_id: couple.id,
@@ -549,8 +551,11 @@ function renderHome(app) {
   const { memberA, memberB, andreiIds, polinaIds } = sides;
   const filtered = filterExpensesByMemberChip(expenses, filterBy, sides);
   const filteredAdvanced = applyAdvancedFilters(filtered, getState());
-  const total = filteredAdvanced.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-  const totalAll = expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+  // Расходы-накопления (отложено в цель) не считаем тратами месяца
+  const isGoalExpense = (x) => Array.isArray(x.goal_contributions) && x.goal_contributions.length > 0;
+  const spendable = filteredAdvanced.filter((x) => !isGoalExpense(x));
+  const total = spendable.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+  const totalAll = expenses.filter((x) => !isGoalExpense(x)).reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
   const grouped = groupByDate(filteredAdvanced);
   const labelA = 'Андрей';
   const labelB = 'Полина';
@@ -603,7 +608,7 @@ function renderHome(app) {
       <div class="summary-card">
         <div class="summary-label">${t('home.expensesOf', { name: selectedMemberLabel })}</div>
         <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
-        <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: filteredAdvanced.length })}</div>
+        <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: spendable.length })}</div>
       </div>
       <div class="tx-section">
         ${grouped.length === 0 ? `
@@ -615,11 +620,27 @@ function renderHome(app) {
         ` : grouped.map(([date, items]) => `
           <div class="tx-day-header">${formatDate(date)}</div>
           ${items.map(exp => {
+            const payerName = resolvePayerLabel(exp, sides);
+            const rowDate = formatExpenseDateRow(exp.expense_date);
+            if (isGoalExpense(exp)) {
+              const goalName = exp.goal_contributions[0]?.goals?.name || exp.description;
+              return `
+                <div class="tx-swipe-row" data-id="${exp.id}">
+                  <button class="tx-delete-btn" type="button">${t('common.delete')}</button>
+                  <div class="tx-item">
+                    <div class="tx-icon" style="background: var(--c-accent-light)">${icon('target', 18, 'var(--c-accent)')}</div>
+                    <div class="tx-info">
+                      <div class="tx-name">${t('home.savedToGoal', { name: e(goalName) })}</div>
+                      <div class="tx-cat">${t('home.savingLabel')}</div>
+                      ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
+                    </div>
+                    <div><div class="tx-amount" style="color:var(--c-accent);">${formatMoney(exp.amount, exp.currency)}</div><div class="tx-who">${e(payerName)}</div></div>
+                  </div>
+                </div>`;
+            }
             const cat = exp.categories;
             const catColor = safeColor(cat?.color || '#888780');
             const bgColor = catColor + '18';
-            const payerName = resolvePayerLabel(exp, sides);
-            const rowDate = formatExpenseDateRow(exp.expense_date);
             return `
               <div class="tx-swipe-row" data-id="${exp.id}">
                 <button class="tx-delete-btn" type="button">${t('common.delete')}</button>
