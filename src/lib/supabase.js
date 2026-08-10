@@ -116,11 +116,16 @@ export async function getCoupleMembers(coupleId) {
 }
 
 // ---- Couple helpers ----
-export async function createCouple(name = 'Our Budget') {
+export async function createCouple(name = 'Our Budget', currency) {
   // Атомарный RPC: couple + couple_id в профиле + сид категорий одной транзакцией.
   // Прямой INSERT..RETURNING не работает: SELECT-политика couples видит пару только после привязки профиля.
-  const { data: couple, error } = await supabase.rpc('create_couple', { p_name: name });
+  // Валюта: выбранная на экране логина до создания пары (ce_pending_currency) или THB.
+  const { data: couple, error } = await supabase.rpc('create_couple', {
+    p_name: name,
+    p_currency: currency || localStorage.getItem('ce_pending_currency') || 'THB',
+  });
   if (error) throw error;
+  localStorage.removeItem('ce_pending_currency');
   return couple;
 }
 

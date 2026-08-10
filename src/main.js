@@ -8,6 +8,7 @@ import { initNativePush } from './services/native-push.js';
 import { initTheme } from './services/theme.js';
 import { exposeToastGlobally } from './services/toast.js';
 import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
+import { t } from './lib/i18n.js';
 import { registerAuthSetupRoutes } from './pages/auth-setup-page.js';
 import { registerHomeRoute } from './pages/home-page.js';
 import { registerAnalyticsRoute } from './pages/analytics-page.js';
@@ -31,9 +32,9 @@ function renderBootLoader(app) {
 function renderBootFallback(app) {
   app.innerHTML = `
     <div class="loading-fallback">
-      <div class="loading-fallback-title">Долго загружается</div>
-      <div class="loading-fallback-text">Проверьте интернет и перезапустите приложение</div>
-      <button class="btn btn-primary" id="btn-restart-app" style="max-width: 280px;">Перезапустить приложение</button>
+      <div class="loading-fallback-title">${t('boot.slowTitle')}</div>
+      <div class="loading-fallback-text">${t('boot.slowText')}</div>
+      <button class="btn btn-primary" id="btn-restart-app" style="max-width: 280px;">${t('boot.restart')}</button>
     </div>
   `;
   document.getElementById('btn-restart-app')?.addEventListener('click', () => {
@@ -111,7 +112,7 @@ async function init() {
 function setupOfflineBanner() {
   const banner = document.createElement('div');
   banner.className = 'offline-banner';
-  banner.textContent = 'Нет подключения к интернету';
+  banner.textContent = t('boot.offline');
   document.body.appendChild(banner);
   const update = () => banner.classList.toggle('visible', !navigator.onLine);
   window.addEventListener('online', update);

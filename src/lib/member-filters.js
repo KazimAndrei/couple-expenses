@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 /** Placeholder ids when member row is missing (disabled chips). */
 export const MISSING_ANDREI_ID = '__missing_andrei__';
 export const MISSING_POLINA_ID = '__missing_polina__';
@@ -160,7 +162,7 @@ function looksLikePersonalPlaceholder(name) {
 }
 
 export function resolvePayerLabel(expense, sides) {
-  if (expense.split === 'equal') return 'Общее';
+  if (expense.split === 'equal') return t('common.shared');
   const joinedName = expenseJoinedProfileName(expense);
   const side = resolvePayerSide(expense.paid_by, sides, joinedName);
   if (side === 'a') return 'Андрей';

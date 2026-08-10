@@ -1,7 +1,8 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
-import { currentMonth, escapeHtml, formatDateTimeRu, formatMoney, formatMonth, icon, pct, prevMonth, safeColor } from '../lib/utils.js';
+import { currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, pct, prevMonth, safeColor } from '../lib/utils.js';
+import { t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -25,14 +26,14 @@ function showAddBudgetModal() {
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
-      <div class="modal-title">Новый бюджет</div>
-      <div class="form-group"><label class="form-label">Категория</label>
+      <div class="modal-title">${t('analytics.newBudget')}</div>
+      <div class="form-group"><label class="form-label">${t('common.category')}</label>
         <select class="form-input" id="budget-cat">${categories.map(c => `<option value="${c.id}">${e(c.name)}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label class="form-label">Лимит (${couple.currency})</label>
+      <div class="form-group"><label class="form-label">${t('analytics.limit', { currency: couple.currency })}</label>
         <input type="number" class="form-input" id="budget-limit" placeholder="10000" inputmode="numeric">
       </div>
-      <button class="btn btn-primary" id="btn-save-budget">Сохранить</button>
+      <button class="btn btn-primary" id="btn-save-budget">${t('common.save')}</button>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -40,14 +41,14 @@ function showAddBudgetModal() {
   document.getElementById('btn-save-budget').onclick = async () => {
     const categoryId = document.getElementById('budget-cat').value;
     const limit = parseFloat(document.getElementById('budget-limit').value);
-    if (!limit || limit <= 0) { showToast('Введите лимит'); return; }
+    if (!limit || limit <= 0) { showToast(t('analytics.enterLimit')); return; }
     try {
       await upsertBudget({ couple_id: couple.id, category_id: categoryId, month: `${month}-01`, limit_amount: limit });
       backdrop.remove();
-      showToast('Бюджет добавлен');
+      showToast(t('analytics.budgetAdded'));
       navigate('/analytics');
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
     }
   };
 }
@@ -115,7 +116,7 @@ export function registerAnalyticsRoute() {
       const categoryId = expense.category_id || 'other';
       const existing = catMap.get(categoryId) || {
         category_id: categoryId,
-        category_name: expense.categories?.name || 'Другое',
+        category_name: expense.categories?.name || t('common.other'),
         category_color: expense.categories?.color || '#888780',
         total: 0,
       };
@@ -130,7 +131,7 @@ export function registerAnalyticsRoute() {
       if (!m) return '—';
       if (m.id === memberA?.id) return 'Андрей';
       if (m.id === memberB?.id) return 'Полина';
-      return m.display_name || 'Участник';
+      return m.display_name || t('common.member');
     };
 
     const labelA = 'Андрей';
@@ -148,37 +149,37 @@ export function registerAnalyticsRoute() {
       : `<div class="filter-avatar filter-avatar-initials">${e((memberB?.display_name || 'П')[0])}</div>`;
     app.innerHTML = `
       <div class="page-enter">
-        <div class="header"><div><div class="header-title">Аналитика</div><div class="header-sub">${formatMonth(month)}</div></div></div>
+        <div class="header"><div><div class="header-title">${t('analytics.title')}</div><div class="header-sub">${formatMonth(month)}</div></div></div>
         <div class="filter-sticky">
           <div class="filter-bar" style="padding: 8px 16px 12px;">
-            <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">Все</button>
+            <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
             <button class="filter-chip ${filterBy === (memberA?.id || MISSING_ANDREI_ID) ? 'active' : ''}" data-filter="${memberA?.id || MISSING_ANDREI_ID}" ${memberA ? '' : 'data-disabled="true"'}>${avatarA} ${labelA}</button>
             <button class="filter-chip ${filterBy === (memberB?.id || MISSING_POLINA_ID) ? 'active' : ''}" data-filter="${memberB?.id || MISSING_POLINA_ID}" ${memberB ? '' : 'data-disabled="true"'}>${avatarB} ${labelB}</button>
           </div>
         </div>
         <div class="stats-grid">
-          <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? `Всего у ${e(selectedMemberLabel)}` : 'Всего'}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
-          <div class="stat-card"><div class="stat-label">Среднее/день</div><div class="stat-value">${formatMoney(grandTotal / 30, state.couple.currency)}</div></div>
-          <div class="stat-card"><div class="stat-label">К прошлому месяцу</div><div class="stat-value">${trendPct > 0 ? '+' : ''}${trendPct}%</div></div>
-          <div class="stat-card"><div class="stat-label">Топ категория</div><div class="stat-value" style="font-size:14px;">${e(topCategory?.category_name || '—')}</div></div>
+          <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? t('analytics.totalOf', { name: e(selectedMemberLabel) }) : t('analytics.total')}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.avgPerDay')}</div><div class="stat-value">${formatMoney(grandTotal / 30, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.vsPrevMonth')}</div><div class="stat-value">${trendPct > 0 ? '+' : ''}${trendPct}%</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.topCategory')}</div><div class="stat-value" style="font-size:14px;">${e(topCategory?.category_name || '—')}</div></div>
           ${payerTotals.map(p => `
-            <div class="stat-card"><div class="stat-label">${e(p.payer_name)} оплатил(а)</div><div class="stat-value">${formatMoney(p.total_paid, state.couple.currency)}</div></div>
+            <div class="stat-card"><div class="stat-label">${t('analytics.paid', { name: e(p.payer_name) })}</div><div class="stat-value">${formatMoney(p.total_paid, state.couple.currency)}</div></div>
           `).join('')}
         </div>
-        <div class="section-header"><span class="section-title">Поступления (доход)</span></div>
+        <div class="section-header"><span class="section-title">${t('analytics.incomeSection')}</span></div>
         <div class="income-entries-analytics" style="padding:0 16px 16px;">
-          ${incomeEntries.length === 0 ? '<div class="empty-state" style="padding:16px 0;"><p style="margin:0;font-size:14px;color:var(--c-text-secondary);">Нет записей о доходах за этот месяц</p></div>' : incomeEntries.map((ent) => `
+          ${incomeEntries.length === 0 ? `<div class="empty-state" style="padding:16px 0;"><p style="margin:0;font-size:14px;color:var(--c-text-secondary);">${t('analytics.noIncome')}</p></div>` : incomeEntries.map((ent) => `
             <div class="income-entry-row" data-income-id="${e(ent.id)}" data-income-amount="${e(String(ent.amount))}" style="display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:10px 0;border-bottom:1px solid var(--c-border);gap:10px;flex-wrap:wrap;">
-              <span style="color:var(--c-text-secondary);">${e(formatDateTimeRu(ent.created_at))}</span>
+              <span style="color:var(--c-text-secondary);">${e(formatDateTime(ent.created_at))}</span>
               <span style="font-weight:600;">${e(incomeAuthorLabel(ent.created_by))}</span>
               <span style="display:flex;align-items:center;gap:8px;">
                 <span style="font-weight:600;white-space:nowrap;">${formatMoney(ent.amount, state.couple.currency)}</span>
-                <button class="btn-income-delete" type="button" aria-label="Удалить запись" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--c-danger,#e24b4a);display:inline-flex;align-items:center;">${icon('trash-2', 16, 'currentColor')}</button>
+                <button class="btn-income-delete" type="button" aria-label="${t('analytics.deleteEntryAria')}" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--c-danger,#e24b4a);display:inline-flex;align-items:center;">${icon('trash-2', 16, 'currentColor')}</button>
               </span>
             </div>
           `).join('')}
         </div>
-        <div class="section-header"><span class="section-title">По категориям</span></div>
+        <div class="section-header"><span class="section-title">${t('analytics.byCategory')}</span></div>
         <div class="cat-bars">
           ${sortedCats.map(c => `
             <div class="cat-bar-row">
@@ -188,22 +189,22 @@ export function registerAnalyticsRoute() {
               <div class="cat-bar-amount">${formatMoney(c.total, state.couple.currency)}</div>
             </div>
           `).join('')}
-          ${sortedCats.length === 0 ? '<div class="empty-state"><p>Нет данных</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">Добавить расход</button></div>' : ''}
+          ${sortedCats.length === 0 ? `<div class="empty-state"><p>${t('analytics.noData')}</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button></div>` : ''}
         </div>
-        <div class="section-header"><span class="section-title">Бюджеты</span><button class="section-action" id="btn-add-budget">+ Добавить</button></div>
+        <div class="section-header"><span class="section-title">${t('analytics.budgets')}</span><button class="section-action" id="btn-add-budget">${t('analytics.addAction')}</button></div>
         <div id="budgets-list">
-          ${budgets.length === 0 ? '<div class="empty-state"><p>Бюджеты не настроены</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">Добавить бюджет</button></div>' : budgets.map(b => {
+          ${budgets.length === 0 ? `<div class="empty-state"><p>${t('analytics.noBudgets')}</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">${t('analytics.addBudget')}</button></div>` : budgets.map(b => {
             const spent = sortedCats.find(c => c.category_id === b.category_id)?.total || 0;
             const percentage = pct(spent, b.limit_amount);
             const fillClass = percentage > 100 ? 'over' : percentage > 80 ? 'warn' : '';
             return `
               <div class="budget-card" data-budget-id="${b.id}">
                 <div class="budget-header">
-                  <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(b.categories?.name || 'Категория')}</div>
+                  <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(b.categories?.name || t('analytics.categoryFallback'))}</div>
                   <div class="budget-amounts">${formatMoney(spent)} / ${formatMoney(b.limit_amount)}</div>
                 </div>
                 <div class="budget-track"><div class="budget-fill ${fillClass}" style="width: ${Math.min(percentage, 100)}%; background: ${!fillClass ? safeColor(b.categories?.color || '#1d9e75') : ''};"></div></div>
-                <div class="budget-pct">${percentage}% использовано</div>
+                <div class="budget-pct">${t('analytics.pctUsed', { pct: percentage })}</div>
               </div>`;
           }).join('')}
         </div>
@@ -213,7 +214,7 @@ export function registerAnalyticsRoute() {
     app.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (chip.dataset.disabled === 'true') {
-          showToast('Полина еще не присоединилась к паре');
+          showToast(t('home.memberNotJoined', { name: 'Полина' }));
           return;
         }
         const selected = chip.dataset.filter;
@@ -229,13 +230,13 @@ export function registerAnalyticsRoute() {
         const amountStr = row?.dataset.incomeAmount || '';
         const amountFmt = formatMoney(parseFloat(amountStr || '0'), state.couple.currency);
         if (!id) return;
-        if (!confirm(`Удалить запись о доходе ${amountFmt}?`)) return;
+        if (!confirm(t('analytics.confirmDeleteIncome', { amount: amountFmt }))) return;
         try {
           await deleteIncomeEntry(id);
-          showToast('Запись удалена');
+          showToast(t('analytics.incomeDeleted'));
           navigate('/analytics');
         } catch (err) {
-          showToast('Ошибка: ' + getReadableError(err));
+          showToast(t('common.error', { msg: getReadableError(err) }));
         }
       });
     });
@@ -252,9 +253,9 @@ export function registerAnalyticsRoute() {
         bd.innerHTML = `
           <div class="modal-sheet">
             <div class="modal-handle"></div>
-            <div class="modal-title">Управление бюджетом</div>
-            <button class="btn btn-danger" id="btn-confirm-delete-budget">Удалить бюджет</button>
-            <button class="btn btn-secondary" id="btn-cancel-delete-budget" style="margin-top:8px;">Отмена</button>
+            <div class="modal-title">${t('analytics.manageBudget')}</div>
+            <button class="btn btn-danger" id="btn-confirm-delete-budget">${t('analytics.deleteBudget')}</button>
+            <button class="btn btn-secondary" id="btn-cancel-delete-budget" style="margin-top:8px;">${t('common.cancel')}</button>
           </div>
         `;
         document.body.appendChild(bd);
@@ -264,9 +265,9 @@ export function registerAnalyticsRoute() {
           try {
             await deleteBudget(budgetId);
             bd.remove();
-            showToast('Бюджет удалён');
+            showToast(t('analytics.budgetDeleted'));
             navigate('/analytics');
-          } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+          } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
         };
       });
     });

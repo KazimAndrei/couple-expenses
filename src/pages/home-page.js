@@ -1,7 +1,8 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { addCategory, addExpense, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense } from '../lib/supabase.js';
-import { availableIcons, currentMonth, escapeHtml, formatDate, formatDateTimeRu, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
+import { availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
+import { t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { loadAll, loadExpenses } from '../services/data-loader.js';
@@ -77,9 +78,9 @@ function showAddExpenseModal() {
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
-      <div class="modal-title">Новый расход</div>
+      <div class="modal-title">${t('home.newExpense')}</div>
       <div class="form-group">
-        <label class="form-label">Сумма</label>
+        <label class="form-label">${t('common.amount')}</label>
         <div class="amount-input-wrap">
           <span class="amount-currency">${currSymbol}</span>
           <input type="number" class="form-input amount" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01">
@@ -91,11 +92,11 @@ function showAddExpenseModal() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Описание</label>
-        <input type="text" class="form-input" id="exp-desc" placeholder="Что купили?" autocomplete="off">
+        <label class="form-label">${t('home.description')}</label>
+        <input type="text" class="form-input" id="exp-desc" placeholder="${t('home.descPlaceholder')}" autocomplete="off">
       </div>
       <div class="form-group">
-        <label class="form-label">Категория</label>
+        <label class="form-label">${t('common.category')}</label>
         <div class="cat-grid" id="cat-grid">
           ${categories.map((c, i) => `
             <div class="cat-option ${c.id === defaultCategoryId || (i === 0 && !defaultCategoryId) ? 'selected' : ''}" data-id="${c.id}">
@@ -107,15 +108,15 @@ function showAddExpenseModal() {
           `).join('')}
           <div class="cat-option cat-option-add" id="btn-add-category">
             <div class="cat-dot" style="background:var(--c-surface-alt)">${icon('plus', 16, 'var(--c-text-muted)')}</div>
-            Добавить
+            ${t('common.add')}
           </div>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Кто платит</label>
+        <label class="form-label">${t('home.whoPays')}</label>
         <div class="payer-options" style="flex-wrap:wrap;">
           <div class="payer-option ${!defaultPayerId || defaultPayerId === 'shared' ? 'selected' : ''}" data-id="shared">
-            <div class="payer-avatar payer-avatar-initials" style="background:var(--c-accent-dark);">${icon('heart', 14, '#fff')}</div><span>Общее</span>
+            <div class="payer-avatar payer-avatar-initials" style="background:var(--c-accent-dark);">${icon('heart', 14, '#fff')}</div><span>${t('common.shared')}</span>
           </div>
           <div class="payer-option ${defaultPayerId === memberAndrei?.id ? 'selected' : ''} ${memberAndrei ? '' : 'disabled'}" data-id="${memberAndrei?.id || ''}" data-disabled="${memberAndrei ? 'false' : 'true'}">
             ${(memberAndrei?.avatar_url || (memberAndrei?.id === profile?.id ? profile?.avatar_url : null))
@@ -130,16 +131,16 @@ function showAddExpenseModal() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Дата</label>
+        <label class="form-label">${t('common.date')}</label>
         <input type="date" class="form-input" id="exp-date" value="${defaultDate}">
       </div>
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
           <input type="checkbox" id="exp-recurring">
-          Сделать ежемесячным шаблоном
+          ${t('home.makeRecurring')}
         </label>
       </div>
-      <button class="btn btn-primary" id="btn-save-exp" style="margin-top: 8px;">Добавить</button>
+      <button class="btn btn-primary" id="btn-save-exp" style="margin-top: 8px;">${t('common.add')}</button>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -163,9 +164,9 @@ function showAddExpenseModal() {
     catBackdrop.innerHTML = `
       <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title">Новая категория</div>
-        <div class="form-group"><label class="form-label">Название</label><input type="text" class="form-input" id="new-cat-name" placeholder="Например: Кофе" autocomplete="off"></div>
-        <div class="form-group"><label class="form-label">Иконка</label>
+        <div class="modal-title">${t('home.newCategory')}</div>
+        <div class="form-group"><label class="form-label">${t('common.name')}</label><input type="text" class="form-input" id="new-cat-name" placeholder="${t('home.catNamePlaceholder')}" autocomplete="off"></div>
+        <div class="form-group"><label class="form-label">${t('home.icon')}</label>
           <div class="cat-grid" id="icon-picker">
             ${availableIcons.filter(n => !['plus','chevron-left','chevron-right','check','x','copy'].includes(n)).map((n, i) => `
               <div class="cat-option ${i === 0 ? 'selected' : ''}" data-icon="${n}">
@@ -175,12 +176,12 @@ function showAddExpenseModal() {
             `).join('')}
           </div>
         </div>
-        <div class="form-group"><label class="form-label">Цвет</label>
+        <div class="form-group"><label class="form-label">${t('home.color')}</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;" id="color-picker">
             ${catColors.map((c, i) => `<div class="color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid transparent;cursor:pointer;"></div>`).join('')}
           </div>
         </div>
-        <button class="btn btn-primary" id="btn-save-new-cat">Создать</button>
+        <button class="btn btn-primary" id="btn-save-new-cat">${t('common.create')}</button>
       </div>
     `;
     document.body.appendChild(catBackdrop);
@@ -201,7 +202,7 @@ function showAddExpenseModal() {
     });
     document.getElementById('btn-save-new-cat').onclick = async () => {
       const name = document.getElementById('new-cat-name').value.trim();
-      if (!name) { showToast('Введите название'); return; }
+      if (!name) { showToast(t('common.enterTitle')); return; }
       const selectedIcon = catBackdrop.querySelector('#icon-picker .cat-option.selected')?.dataset.icon || 'more-horizontal';
       const selectedColor = catBackdrop.querySelector('#color-picker .color-dot.selected')?.dataset.color || '#888780';
       try {
@@ -209,9 +210,9 @@ function showAddExpenseModal() {
         catBackdrop.remove();
         backdrop.remove();
         await loadAll();
-        showToast('Категория добавлена');
+        showToast(t('home.categoryAdded'));
         showAddExpenseModal();
-      } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+      } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
     };
   });
   backdrop.querySelectorAll('.cat-option:not(#btn-add-category)').forEach(opt => {
@@ -223,7 +224,7 @@ function showAddExpenseModal() {
   backdrop.querySelectorAll('.payer-option').forEach(opt => {
     opt.addEventListener('click', () => {
       if (opt.dataset.disabled === 'true') {
-        showToast(`${opt.textContent.includes('Полина') ? 'Полина' : 'Андрей'} еще не присоединился(ась) к паре`);
+        showToast(t('home.memberNotJoined', { name: opt.textContent.includes('Полина') ? 'Полина' : 'Андрей' }));
         return;
       }
       backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
@@ -237,8 +238,8 @@ function showAddExpenseModal() {
     const payerEl = backdrop.querySelector('.payer-option.selected');
     const date = document.getElementById('exp-date').value;
     const recurring = document.getElementById('exp-recurring').checked;
-    if (!amount || amount <= 0) { showToast('Введите сумму'); return; }
-    if (!description) { showToast('Введите описание'); return; }
+    if (!amount || amount <= 0) { showToast(t('common.enterAmount')); return; }
+    if (!description) { showToast(t('home.enterDescription')); return; }
     let created = null;
     try {
       const isShared = payerEl?.dataset.id === 'shared';
@@ -254,7 +255,7 @@ function showAddExpenseModal() {
         currency: couple.currency || 'THB',
       });
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
       return;
     }
 
@@ -285,13 +286,13 @@ function showAddExpenseModal() {
           day_of_month: Number(date.slice(8, 10)),
         });
       } catch (recErr) {
-        showToast('Расход добавлен, но шаблон повторения не создан: ' + getReadableError(recErr));
+        showToast(t('home.recurringNotCreated', { msg: getReadableError(recErr) }));
       }
     }
 
     backdrop.remove();
-    showToast('Расход добавлен', {
-      actionLabel: 'Отменить',
+    showToast(t('home.expenseAdded'), {
+      actionLabel: t('common.undo'),
       durationMs: 5000,
       onAction: async () => {
         try {
@@ -300,9 +301,9 @@ function showAddExpenseModal() {
           if (getCurrentPath() === '/') {
             renderHome(document.getElementById('app'));
           }
-          showToast('Добавление отменено');
+          showToast(t('home.addUndone'));
         } catch (undoErr) {
-          showToast('Не удалось отменить: ' + undoErr.message);
+          showToast(t('home.undoFailed', { msg: undoErr.message }));
         }
       },
     });
@@ -329,33 +330,33 @@ function showHomeFiltersModal() {
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
-      <div class="modal-title">Фильтры</div>
+      <div class="modal-title">${t('home.filters')}</div>
       <div class="form-group">
-        <label class="form-label">Категория</label>
+        <label class="form-label">${t('common.category')}</label>
         <select class="form-input" id="filter-category">
-          <option value="">Все категории</option>
+          <option value="">${t('home.allCategories')}</option>
           ${categories.map(c => `<option value="${c.id}" ${categoryFilter === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Сумма от</label>
+        <label class="form-label">${t('home.amountFrom')}</label>
         <input type="number" class="form-input" id="filter-min" value="${amountMin || ''}" placeholder="0">
       </div>
       <div class="form-group">
-        <label class="form-label">Сумма до</label>
+        <label class="form-label">${t('home.amountTo')}</label>
         <input type="number" class="form-input" id="filter-max" value="${amountMax || ''}" placeholder="100000">
       </div>
       <div class="form-group">
-        <label class="form-label">Дата от</label>
+        <label class="form-label">${t('home.dateFrom')}</label>
         <input type="date" class="form-input" id="filter-date-from" value="${dateFrom || ''}">
       </div>
       <div class="form-group">
-        <label class="form-label">Дата до</label>
+        <label class="form-label">${t('home.dateTo')}</label>
         <input type="date" class="form-input" id="filter-date-to" value="${dateTo || ''}">
       </div>
       <div style="display:flex; gap:8px;">
-        <button class="btn btn-secondary" id="btn-reset-filters">Сбросить</button>
-        <button class="btn btn-primary" id="btn-apply-filters">Применить</button>
+        <button class="btn btn-secondary" id="btn-reset-filters">${t('common.reset')}</button>
+        <button class="btn btn-primary" id="btn-apply-filters">${t('common.apply')}</button>
       </div>
     </div>
   `;
@@ -388,9 +389,9 @@ function showExpenseActionsModal(expense, app) {
     <div class="modal-sheet">
       <div class="modal-handle"></div>
       <div class="modal-title">${e(expense.description)}</div>
-      <button class="btn btn-secondary" id="btn-edit-expense">Изменить</button>
-      <button class="btn btn-secondary" id="btn-duplicate-expense" style="margin-top: 8px;">Дублировать</button>
-      <button class="btn btn-danger" id="btn-delete-expense" style="margin-top: 8px;">Удалить</button>
+      <button class="btn btn-secondary" id="btn-edit-expense">${t('common.edit')}</button>
+      <button class="btn btn-secondary" id="btn-duplicate-expense" style="margin-top: 8px;">${t('home.duplicate')}</button>
+      <button class="btn btn-danger" id="btn-delete-expense" style="margin-top: 8px;">${t('common.delete')}</button>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -404,15 +405,15 @@ function showExpenseActionsModal(expense, app) {
     editBackdrop.innerHTML = `
       <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title">Изменить расход</div>
-        <div class="form-group"><label class="form-label">Сумма</label><input type="number" class="form-input" id="edit-amount" value="${expense.amount}"></div>
-        <div class="form-group"><label class="form-label">Описание</label><input type="text" class="form-input" id="edit-desc" value="${e(expense.description)}"></div>
-        <div class="form-group"><label class="form-label">Категория</label>
+        <div class="modal-title">${t('home.editExpense')}</div>
+        <div class="form-group"><label class="form-label">${t('common.amount')}</label><input type="number" class="form-input" id="edit-amount" value="${expense.amount}"></div>
+        <div class="form-group"><label class="form-label">${t('home.description')}</label><input type="text" class="form-input" id="edit-desc" value="${e(expense.description)}"></div>
+        <div class="form-group"><label class="form-label">${t('common.category')}</label>
           <select class="form-input" id="edit-category">${categories.map(c => `<option value="${c.id}" ${expense.category_id === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>
         </div>
-        <div class="form-group"><label class="form-label">Кто платит</label>
+        <div class="form-group"><label class="form-label">${t('home.whoPays')}</label>
           <select class="form-input" id="edit-paid-by">
-            <option value="shared" ${expense.split === 'equal' ? 'selected' : ''}>Общее</option>
+            <option value="shared" ${expense.split === 'equal' ? 'selected' : ''}>${t('common.shared')}</option>
             ${(() => {
               const { andrei: mA, polina: mB, sides } = pickPayerUiMembers(members, profile?.id);
               const expSide = expense.split !== 'equal'
@@ -432,14 +433,14 @@ function showExpenseActionsModal(expense, app) {
                 if (used.has(m.id)) continue;
                 if (resolvePayerSide(m.id, sides) === 'a' || resolvePayerSide(m.id, sides) === 'b') continue;
                 const sel = expense.split !== 'equal' && expense.paid_by === m.id;
-                opts.push(`<option value="${m.id}" ${sel ? 'selected' : ''}>${e(m.display_name || 'Участник')}</option>`);
+                opts.push(`<option value="${m.id}" ${sel ? 'selected' : ''}>${e(m.display_name || t('common.member'))}</option>`);
               }
               return opts.join('');
             })()}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Дата</label><input type="date" class="form-input" id="edit-date" value="${expense.expense_date}"></div>
-        <button class="btn btn-primary" id="btn-save-expense-edit">Сохранить</button>
+        <div class="form-group"><label class="form-label">${t('common.date')}</label><input type="date" class="form-input" id="edit-date" value="${expense.expense_date}"></div>
+        <button class="btn btn-primary" id="btn-save-expense-edit">${t('common.save')}</button>
       </div>
     `;
     document.body.appendChild(editBackdrop);
@@ -459,9 +460,9 @@ function showExpenseActionsModal(expense, app) {
         editBackdrop.remove();
         await loadExpenses();
         renderHome(app);
-        showToast('Расход обновлен');
+        showToast(t('home.expenseUpdated'));
       } catch (err) {
-        showToast('Ошибка: ' + getReadableError(err));
+        showToast(t('common.error', { msg: getReadableError(err) }));
       }
     };
   };
@@ -474,7 +475,7 @@ function showExpenseActionsModal(expense, app) {
         category_id: expense.category_id,
         paid_by: expense.paid_by,
         amount: parseFloat(expense.amount),
-        description: `${expense.description} (копия)`,
+        description: `${expense.description}${t('home.duplicateSuffix')}`,
         split: expense.split,
         expense_date: todayStr(),
         currency: expense.currency,
@@ -482,9 +483,9 @@ function showExpenseActionsModal(expense, app) {
       backdrop.remove();
       await loadExpenses();
       renderHome(app);
-      showToast('Расход продублирован');
+      showToast(t('home.expenseDuplicated'));
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
     }
   };
   document.getElementById('btn-delete-expense').onclick = async () => {
@@ -493,9 +494,9 @@ function showExpenseActionsModal(expense, app) {
       backdrop.remove();
       await loadExpenses();
       renderHome(app);
-      showToast('Удалено');
+      showToast(t('home.deleted'));
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
     }
   };
 }
@@ -513,7 +514,7 @@ function renderHome(app) {
   const labelB = 'Полина';
   const selectedMemberLabel = filterBy === MISSING_ANDREI_ID
     ? 'Андрей'
-    : (filterBy === MISSING_POLINA_ID ? 'Полина' : (filterBy === memberA?.id ? 'Андрей' : (filterBy === memberB?.id ? 'Полина' : 'Общие')));
+    : (filterBy === MISSING_POLINA_ID ? 'Полина' : (filterBy === memberA?.id ? 'Андрей' : (filterBy === memberB?.id ? 'Полина' : t('home.totalLabel'))));
   const avatarUrlA = memberA?.avatar_url || (memberA?.id === profile?.id ? profile?.avatar_url : null);
   const avatarUrlB = memberB?.avatar_url || (memberB?.id === profile?.id ? profile?.avatar_url : null);
   const avatarA = avatarUrlA
@@ -525,7 +526,7 @@ function renderHome(app) {
   app.innerHTML = `
     <div class="page-enter">
       <div class="header">
-        <div><div class="header-title">Расходы</div></div>
+        <div><div class="header-title">${t('home.title')}</div></div>
         <button class="header-action" onclick="document.getElementById('add-exp-btn').click()">
           ${icon('bell', 20)}
         </button>
@@ -536,12 +537,12 @@ function renderHome(app) {
         <button id="next-month">${icon('chevron-right', 18)}</button>
       </div>
       <div style="display:flex; gap:8px; padding:0 16px 10px;">
-        <input class="form-input" id="home-search" placeholder="Поиск по описанию" value="${e(searchQuery || '')}" style="flex:1;">
-        <button class="btn btn-secondary btn-small" id="btn-open-filters" style="white-space:nowrap;">Фильтры</button>
+        <input class="form-input" id="home-search" placeholder="${t('home.searchPlaceholder')}" value="${e(searchQuery || '')}" style="flex:1;">
+        <button class="btn btn-secondary btn-small" id="btn-open-filters" style="white-space:nowrap;">${t('home.filters')}</button>
       </div>
       <div class="filter-sticky">
         <div class="filter-bar">
-          <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">Все</button>
+          <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
           <button class="filter-chip ${filterBy === (memberA?.id || MISSING_ANDREI_ID) ? 'active' : ''}" data-filter="${memberA?.id || MISSING_ANDREI_ID}" ${memberA ? '' : 'data-disabled="true"'}>${avatarA} ${labelA}</button>
           <button class="filter-chip ${filterBy === (memberB?.id || MISSING_POLINA_ID) ? 'active' : ''}" data-filter="${memberB?.id || MISSING_POLINA_ID}" ${memberB ? '' : 'data-disabled="true"'}>${avatarB} ${labelB}</button>
         </div>
@@ -549,25 +550,25 @@ function renderHome(app) {
       <div class="income-card" id="income-card">
         <div class="income-row">
           <div>
-            <div class="income-label">Доход за месяц</div>
+            <div class="income-label">${t('home.monthIncome')}</div>
             <div class="income-value" id="income-display">${formatMoney(getIncomeFromState(), couple?.currency)}</div>
           </div>
           <button class="income-edit-btn" id="btn-edit-income">${icon('settings', 16)}</button>
         </div>
         <div class="income-bar-track"><div class="income-bar-fill" style="width:${getIncomeFromState() > 0 ? Math.min(100, Math.round(totalAll / getIncomeFromState() * 100)) : 0}%"></div></div>
-        <div class="income-remaining">${getIncomeFromState() > 0 ? `Остаток: ${formatMoney(Math.max(0, getIncomeFromState() - totalAll), couple?.currency)} (${Math.max(0, Math.round((1 - totalAll / getIncomeFromState()) * 100))}%)` : 'Нажмите ⚙ чтобы указать доход'}</div>
+        <div class="income-remaining">${getIncomeFromState() > 0 ? t('home.remaining', { amount: formatMoney(Math.max(0, getIncomeFromState() - totalAll), couple?.currency), pct: Math.max(0, Math.round((1 - totalAll / getIncomeFromState()) * 100)) }) : t('home.setIncomeHint')}</div>
       </div>
       <div class="summary-card">
-        <div class="summary-label">${selectedMemberLabel} расходы</div>
+        <div class="summary-label">${t('home.expensesOf', { name: selectedMemberLabel })}</div>
         <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
-        <div class="summary-badge">${icon('trending-down', 14)} ${filteredAdvanced.length} транзакций</div>
+        <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: filteredAdvanced.length })}</div>
       </div>
       <div class="tx-section">
         ${grouped.length === 0 ? `
           <div class="empty-state">
             ${icon('credit-card', 48, 'var(--c-text-muted)')}
-            <p>Нет расходов за этот месяц</p>
-            <button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">Добавить расход</button>
+            <p>${t('home.emptyMonth')}</p>
+            <button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button>
           </div>
         ` : grouped.map(([date, items]) => `
           <div class="tx-day-header">${formatDate(date)}</div>
@@ -579,12 +580,12 @@ function renderHome(app) {
             const rowDate = formatExpenseDateRow(exp.expense_date);
             return `
               <div class="tx-swipe-row" data-id="${exp.id}">
-                <button class="tx-delete-btn" type="button">Удалить</button>
+                <button class="tx-delete-btn" type="button">${t('common.delete')}</button>
                 <div class="tx-item">
                   <div class="tx-icon" style="background: ${bgColor}">${icon(cat?.icon || 'more-horizontal', 18, catColor)}</div>
                   <div class="tx-info">
                     <div class="tx-name">${e(exp.description)}</div>
-                    <div class="tx-cat">${e(cat?.name || 'Другое')}</div>
+                    <div class="tx-cat">${e(cat?.name || t('common.other'))}</div>
                     ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
                   </div>
                   <div><div class="tx-amount negative">-${formatMoney(exp.amount, exp.currency)}</div><div class="tx-who">${e(payerName)}</div></div>
@@ -610,26 +611,26 @@ function renderHome(app) {
       if (!m) return '—';
       if (m.id === sides.memberA?.id) return 'Андрей';
       if (m.id === sides.memberB?.id) return 'Полина';
-      return m.display_name || 'Участник';
+      return m.display_name || t('common.member');
     };
     backdrop.innerHTML = `
       <div class="modal-sheet">
         <div class="modal-handle"></div>
-        <div class="modal-title">Доход за месяц</div>
+        <div class="modal-title">${t('home.monthIncome')}</div>
         <div class="income-entries-block" style="max-height:220px;overflow-y:auto;margin-bottom:12px;">
-          ${incomeEntries.length === 0 ? '<p style="font-size:13px;color:var(--c-text-secondary);margin:0;">Добавляйте поступления по одному — для каждой записи сохраняются дата и кто внёс данные (видно в аналитике).</p>' : incomeEntries.map((ent) => `
+          ${incomeEntries.length === 0 ? `<p style="font-size:13px;color:var(--c-text-secondary);margin:0;">${t('home.incomeEmptyHint')}</p>` : incomeEntries.map((ent) => `
             <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:8px 0;border-bottom:1px solid var(--c-border);gap:8px;flex-wrap:wrap;">
-              <span style="color:var(--c-text-secondary);">${e(formatDateTimeRu(ent.created_at))}</span>
+              <span style="color:var(--c-text-secondary);">${e(formatDateTime(ent.created_at))}</span>
               <span style="font-weight:600;">${e(authorLabel(ent.created_by))}</span>
               <span style="font-weight:600;white-space:nowrap;">${formatMoney(ent.amount, couple?.currency)}</span>
             </div>
           `).join('')}
         </div>
         <div class="form-group">
-          <label class="form-label">Добавить поступление (${couple?.currency || 'THB'})</label>
+          <label class="form-label">${t('home.addIncomeLabel', { currency: couple?.currency || 'THB' })}</label>
           <input type="number" class="form-input amount" id="income-add" placeholder="0" inputmode="decimal" min="0" step="0.01">
         </div>
-        <button class="btn btn-primary" id="btn-save-income">Добавить</button>
+        <button class="btn btn-primary" id="btn-save-income">${t('common.add')}</button>
       </div>
     `;
     document.body.appendChild(backdrop);
@@ -637,7 +638,7 @@ function renderHome(app) {
     setTimeout(() => document.getElementById('income-add')?.focus(), 300);
     document.getElementById('btn-save-income').onclick = async () => {
       const val = parseFloat(document.getElementById('income-add').value) || 0;
-      if (!val || val <= 0) { showToast('Введите сумму больше 0'); return; }
+      if (!val || val <= 0) { showToast(t('home.enterAmountPositive')); return; }
       try {
         await addIncomeEntry(couple?.id, month, val);
         const [newTotal, entries] = await Promise.all([
@@ -647,9 +648,9 @@ function renderHome(app) {
         setState({ monthlyIncome: newTotal, incomeEntries: entries });
         backdrop.remove();
         renderHome(app);
-        showToast('Доход добавлен');
+        showToast(t('home.incomeAdded'));
       } catch (err) {
-        showToast('Ошибка: ' + getReadableError(err));
+        showToast(t('common.error', { msg: getReadableError(err) }));
       }
     };
   });
@@ -666,7 +667,7 @@ function renderHome(app) {
   document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.onclick = () => {
       if (chip.dataset.disabled === 'true') {
-        showToast('Полина еще не присоединилась к паре');
+        showToast(t('home.memberNotJoined', { name: 'Полина' }));
         return;
       }
       const filter = chip.dataset.filter;
@@ -689,8 +690,8 @@ function renderHome(app) {
       await deleteExpense(expenseId);
       await loadExpenses();
       renderHome(app);
-      showToast('Удалено', {
-        actionLabel: 'Отменить',
+      showToast(t('home.deleted'), {
+        actionLabel: t('common.undo'),
         durationMs: 5000,
         onAction: async () => {
           if (!expenseData) return;
@@ -707,12 +708,12 @@ function renderHome(app) {
             });
             await loadExpenses();
             if (getCurrentPath() === '/') renderHome(app);
-            showToast('Восстановлено');
-          } catch { showToast('Не удалось восстановить'); }
+            showToast(t('home.restored'));
+          } catch { showToast(t('home.restoreFailed')); }
         },
       });
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
     }
   };
 

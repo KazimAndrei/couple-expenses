@@ -1,23 +1,87 @@
+import { dateLocale, dayShort, getLang, monthName, monthShort, t } from './i18n.js';
+
 // ---- Currency formatting ----
-const formatters = {
-  THB: new Intl.NumberFormat('th-TH', { style: 'decimal', maximumFractionDigits: 0 }),
-  RUB: new Intl.NumberFormat('ru-RU', { style: 'decimal', maximumFractionDigits: 0 }),
-  USD: new Intl.NumberFormat('en-US', { style: 'decimal', maximumFractionDigits: 2 }),
+// Основные мировые валюты: [символ, название для выбора в настройках]
+// Русские названия — источник истины; для en берём Intl.DisplayNames (см. currencyName)
+export const CURRENCIES = {
+  THB: ['฿', 'Тайский бат'],
+  RUB: ['₽', 'Российский рубль'],
+  USD: ['$', 'Доллар США'],
+  EUR: ['€', 'Евро'],
+  GBP: ['£', 'Фунт стерлингов'],
+  JPY: ['¥', 'Японская иена'],
+  CNY: ['¥', 'Китайский юань'],
+  CHF: ['₣', 'Швейцарский франк'],
+  AED: ['AED', 'Дирхам ОАЭ'],
+  TRY: ['₺', 'Турецкая лира'],
+  KZT: ['₸', 'Казахстанский тенге'],
+  UAH: ['₴', 'Украинская гривна'],
+  BYN: ['Br', 'Белорусский рубль'],
+  AMD: ['֏', 'Армянский драм'],
+  GEL: ['₾', 'Грузинский лари'],
+  RSD: ['дин', 'Сербский динар'],
+  INR: ['₹', 'Индийская рупия'],
+  KRW: ['₩', 'Южнокорейская вона'],
+  VND: ['₫', 'Вьетнамский донг'],
+  IDR: ['Rp', 'Индонезийская рупия'],
+  MYR: ['RM', 'Малайзийский ринггит'],
+  PHP: ['₱', 'Филиппинское песо'],
+  SGD: ['S$', 'Сингапурский доллар'],
+  HKD: ['HK$', 'Гонконгский доллар'],
+  AUD: ['A$', 'Австралийский доллар'],
+  CAD: ['C$', 'Канадский доллар'],
+  NZD: ['NZ$', 'Новозеландский доллар'],
+  SEK: ['kr', 'Шведская крона'],
+  NOK: ['kr', 'Норвежская крона'],
+  DKK: ['kr', 'Датская крона'],
+  PLN: ['zł', 'Польский злотый'],
+  CZK: ['Kč', 'Чешская крона'],
+  ILS: ['₪', 'Израильский шекель'],
+  BRL: ['R$', 'Бразильский реал'],
+  MXN: ['MX$', 'Мексиканское песо'],
+  ARS: ['AR$', 'Аргентинское песо'],
+  EGP: ['E£', 'Египетский фунт'],
+  ZAR: ['R', 'Южноафриканский рэнд'],
 };
-const symbols = { THB: '฿', RUB: '₽', USD: '$' };
+
+// Валюты без копеечных долей — округляем целиком
+const zeroDecimal = new Set(['JPY', 'KRW', 'VND', 'IDR', 'THB', 'RUB', 'KZT', 'AMD']);
+const formatterCache = {};
+
+function getFormatter(currency) {
+  const key = `${dateLocale()}:${currency}`;
+  if (!formatterCache[key]) {
+    formatterCache[key] = new Intl.NumberFormat(dateLocale(), {
+      style: 'decimal',
+      maximumFractionDigits: zeroDecimal.has(currency) ? 0 : 2,
+    });
+  }
+  return formatterCache[key];
+}
+
+let currencyDisplayNames = null;
+
+/** Название валюты для UI: ru — из словаря CURRENCIES, en — через Intl.DisplayNames. */
+export function currencyName(code) {
+  const ruName = CURRENCIES[code]?.[1] || code;
+  if (getLang() !== 'en') return ruName;
+  try {
+    if (!currencyDisplayNames) {
+      currencyDisplayNames = new Intl.DisplayNames(['en'], { type: 'currency' });
+    }
+    return currencyDisplayNames.of(code) || ruName;
+  } catch {
+    return ruName;
+  }
+}
 
 export function formatMoney(amount, currency = 'THB') {
-  const fmt = formatters[currency] || formatters.THB;
-  const sym = symbols[currency] || currency;
-  return `${fmt.format(Math.round(amount))} ${sym}`;
+  const sym = CURRENCIES[currency]?.[0] || currency;
+  return `${getFormatter(currency).format(Math.round(amount))} ${sym}`;
 }
 
 // ---- Date helpers ----
-const monthNamesRu = [
-  'Январь','Февраль','Март','Апрель','Май','Июнь',
-  'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'
-];
-const dayNamesRu = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+// Имена месяцев/дней недели живут в i18n.js и переключаются вместе с языком.
 
 export function currentMonth() {
   const d = new Date();
@@ -26,7 +90,7 @@ export function currentMonth() {
 
 export function formatMonth(monthStr) {
   const [y, m] = monthStr.split('-');
-  return `${monthNamesRu[parseInt(m) - 1]} ${y}`;
+  return `${monthName(parseInt(m) - 1)} ${y}`;
 }
 
 export function prevMonth(monthStr) {
@@ -45,18 +109,18 @@ export function formatDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  if (d.getTime() === today.getTime()) return 'Сегодня';
-  if (d.getTime() === yesterday.getTime()) return 'Вчера';
-  return `${d.getDate()} ${monthNamesRu[d.getMonth()].toLowerCase().slice(0, 3)}, ${dayNamesRu[d.getDay()]}`;
+  if (d.getTime() === today.getTime()) return t('date.today');
+  if (d.getTime() === yesterday.getTime()) return t('date.yesterday');
+  return `${d.getDate()} ${monthShort(d.getMonth())}, ${dayShort(d.getDay())}`;
 }
 
 /** Calendar date on each transaction row (DD.MM.YYYY). */
 /** Localized date+time for income log / analytics. */
-export function formatDateTimeRu(isoStr) {
+export function formatDateTime(isoStr) {
   if (isoStr == null || isoStr === '') return '—';
   const d = new Date(isoStr);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('ru-RU', {
+  return d.toLocaleString(dateLocale(), {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -134,6 +198,7 @@ const iconPaths = {
   'x': '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   'bell': '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   'moon': '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  'globe': '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
   'link': '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   'settings': '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   'copy': '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',

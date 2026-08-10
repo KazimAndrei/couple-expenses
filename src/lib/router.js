@@ -1,4 +1,5 @@
 import { diagError, diagStep } from '../services/diagnostics.js';
+import { t } from './i18n.js';
 
 const routes = {};
 let currentCleanup = null;
@@ -41,8 +42,8 @@ async function handleRoute() {
     diagError(`route failed: ${path}`, err);
     app.innerHTML = `
       <div class="empty-state" style="padding-top: 120px;">
-        <p>Не удалось загрузить экран</p>
-        <button class="btn btn-primary" style="margin-top: 12px; max-width: 280px;" id="btn-route-retry">Повторить</button>
+        <p>${t('router.loadFailed')}</p>
+        <button class="btn btn-primary" style="margin-top: 12px; max-width: 280px;" id="btn-route-retry">${t('router.retry')}</button>
       </div>
     `;
     document.getElementById('btn-route-retry')?.addEventListener('click', () => {

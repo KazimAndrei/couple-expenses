@@ -1,7 +1,8 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
 import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signInAsGuest, updateDisplayName, inviteLink, GUEST_ENABLED } from '../lib/supabase.js';
-import { currentMonth, escapeHtml, icon } from '../lib/utils.js';
+import { CURRENCIES, currencyName, currentMonth, escapeHtml, icon } from '../lib/utils.js';
+import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { initNativePush } from '../services/native-push.js';
@@ -39,21 +40,44 @@ export function registerAuthSetupRoutes() {
       <div class="welcome-splash" id="welcome-splash">
         <h1 class="welcome-title">CoupleExpenses</h1>
         <img src="/welcome.png" alt="" class="welcome-photo" onerror="this.style.display='none'">
-        <div class="welcome-tap-hint">Нажмите, чтобы войти</div>
+        <div class="welcome-tap-hint">${t('auth.tapToSignIn')}</div>
       </div>
       <div class="auth-page page-enter" id="auth-content" style="display:none;">
         <div class="auth-logo">${icon('heart', 48, 'var(--c-accent)')}</div>
         <div class="auth-title">CoupleExpenses</div>
-        <div class="auth-sub">Совместный учёт расходов<br>для вас двоих</div>
+        <div class="auth-sub">${t('auth.subtitle')}</div>
         <div class="auth-form">
-          <button class="btn btn-apple" id="btn-apple">${appleLogo}<span>Войти через Apple</span></button>
-          ${GUEST_ENABLED ? '<button class="btn btn-secondary" style="margin-top:12px;" id="btn-guest">Войти как гость (dev)</button>' : ''}
+          <button class="btn btn-apple" id="btn-apple">${appleLogo}<span>${t('auth.signInApple')}</span></button>
+          ${GUEST_ENABLED ? `<button class="btn btn-secondary" style="margin-top:12px;" id="btn-guest">${t('auth.signInGuest')}</button>` : ''}
+          <div style="display:flex; gap:8px; margin-top:20px;">
+            <div class="form-group" style="flex:1; margin:0;">
+              <label class="form-label">${t('profile.languageTitle')}</label>
+              <select class="form-input" id="auth-lang">
+                ${['ru', 'en'].map((l) => `<option value="${l}" ${getLang() === l ? 'selected' : ''}>${LANG_LABELS[l]}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="flex:1; margin:0;">
+              <label class="form-label">${t('profile.currencyTitle')}</label>
+              <select class="form-input" id="auth-currency">
+                ${Object.entries(CURRENCIES).map(([code, [sym]]) =>
+                  `<option value="${code}" ${(localStorage.getItem('ce_pending_currency') || 'THB') === code ? 'selected' : ''}>${code} (${sym})</option>`
+                ).join('')}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     `;
     document.getElementById('welcome-splash').addEventListener('click', () => {
       document.getElementById('welcome-splash').style.display = 'none';
       document.getElementById('auth-content').style.display = 'block';
+    });
+
+    document.getElementById('auth-lang').addEventListener('change', (ev) => {
+      setLang(ev.target.value); // сохранит выбор и перезагрузит приложение на новом языке
+    });
+    document.getElementById('auth-currency').addEventListener('change', (ev) => {
+      localStorage.setItem('ce_pending_currency', ev.target.value); // подхватится при создании пары
     });
 
     document.getElementById('btn-guest')?.addEventListener('click', async () => {
@@ -68,7 +92,7 @@ export function registerAuthSetupRoutes() {
           navigate('/setup');
         }
       } catch (err) {
-        showToast('Ошибка: ' + getReadableError(err));
+        showToast(t('common.error', { msg: getReadableError(err) }));
         btn.disabled = false;
       }
     });
@@ -89,7 +113,7 @@ export function registerAuthSetupRoutes() {
         if (err?.message?.includes('1001') || err?.code === '1001') {
           // юзер закрыл окно Apple — не ошибка
         } else {
-          showToast('Ошибка входа: ' + getReadableError(err));
+          showToast(t('auth.signInError', { msg: getReadableError(err) }));
         }
         btn.disabled = false;
       }
@@ -109,18 +133,18 @@ export function registerAuthSetupRoutes() {
     app.innerHTML = `
       <div class="setup-page page-enter">
         <div style="margin-bottom: 24px">${icon('heart', 40, 'var(--c-accent)')}</div>
-        <div class="setup-title">Настройка пары</div>
-        <div class="setup-sub">Создайте общее пространство или присоединитесь к партнёру</div>
+        <div class="setup-title">${t('setup.title')}</div>
+        <div class="setup-sub">${t('setup.subtitle')}</div>
         <div class="auth-form" style="max-width: 320px; margin: 0 auto;">
           <div class="form-group">
-            <label class="form-label">Ваше имя</label>
-            <input type="text" class="form-input" id="setup-name" placeholder="Андрей" value="${e(knownName)}" autocomplete="name">
+            <label class="form-label">${t('setup.yourName')}</label>
+            <input type="text" class="form-input" id="setup-name" placeholder="${t('setup.namePlaceholder')}" value="${e(knownName)}" autocomplete="name">
           </div>
         </div>
         <div class="setup-options">
-          ${pendingCode ? '' : '<div class="setup-card" id="btn-create"><h3>Создать пару</h3><p>Получите ссылку-приглашение для партнёра</p></div>'}
-          <div class="setup-card" id="btn-join"><h3>Присоединиться</h3><p>${pendingCode ? 'Вас пригласили в пару' : 'Введите код от партнёра'}</p></div>
-          ${pendingCode ? '<div class="setup-card" id="btn-create"><h3>Создать свою пару</h3><p>Не хочу присоединяться по приглашению</p></div>' : ''}
+          ${pendingCode ? '' : `<div class="setup-card" id="btn-create"><h3>${t('setup.createTitle')}</h3><p>${t('setup.createText')}</p></div>`}
+          <div class="setup-card" id="btn-join"><h3>${t('setup.joinTitle')}</h3><p>${pendingCode ? t('setup.joinInvitedText') : t('setup.joinText')}</p></div>
+          ${pendingCode ? `<div class="setup-card" id="btn-create"><h3>${t('setup.createOwnTitle')}</h3><p>${t('setup.createOwnText')}</p></div>` : ''}
         </div>
         <div id="setup-form" style="max-width: 320px; margin: 24px auto 0; display: none;"></div>
       </div>
@@ -130,7 +154,7 @@ export function registerAuthSetupRoutes() {
 
     document.getElementById('btn-create').onclick = async () => {
       const name = readName();
-      if (!name) { showToast('Введите имя'); return; }
+      if (!name) { showToast(t('common.enterName')); return; }
       try {
         await updateDisplayName(name);
         const couple = await createCouple();
@@ -139,22 +163,22 @@ export function registerAuthSetupRoutes() {
         const form = document.getElementById('setup-form');
         form.style.display = 'block';
         form.innerHTML = `
-          <p style="font-size: 14px; color: var(--c-text-secondary); margin-bottom: 8px;">Отправьте партнёру ссылку:</p>
+          <p style="font-size: 14px; color: var(--c-text-secondary); margin-bottom: 8px;">${t('setup.sendPartnerLink')}</p>
           <div class="invite-code" style="font-size:13px; word-break:break-all;">${e(link)}</div>
-          <button class="btn btn-secondary btn-small" id="btn-share-invite">Поделиться</button>
-          <button class="btn btn-primary" style="margin-top: 16px;" id="btn-start">Начать</button>
+          <button class="btn btn-secondary btn-small" id="btn-share-invite">${t('setup.share')}</button>
+          <button class="btn btn-primary" style="margin-top: 16px;" id="btn-start">${t('setup.start')}</button>
         `;
         document.getElementById('btn-share-invite').onclick = async () => {
           if (navigator.share) {
-            try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре в CoupleExpenses', url: link }); } catch { /* отменили шаринг */ }
+            try { await navigator.share({ title: 'CoupleExpenses', text: t('setup.shareText'), url: link }); } catch { /* отменили шаринг */ }
           } else {
             await navigator.clipboard.writeText(link);
-            showToast('Ссылка скопирована');
+            showToast(t('common.linkCopied'));
           }
         };
         document.getElementById('btn-start').onclick = () => enterApp(couple);
       } catch (err) {
-        showToast('Ошибка: ' + getReadableError(err));
+        showToast(t('common.error', { msg: getReadableError(err) }));
       }
     };
 
@@ -163,28 +187,28 @@ export function registerAuthSetupRoutes() {
       form.style.display = 'block';
       form.innerHTML = `
         <div class="form-group">
-          <label class="form-label">Код приглашения</label>
+          <label class="form-label">${t('setup.inviteCode')}</label>
           <input type="text" class="form-input" id="join-code" placeholder="abc123" value="${e(pendingCode)}" autocomplete="off" style="text-align:center; font-size: 20px; letter-spacing: 2px;">
         </div>
-        <button class="btn btn-primary" id="btn-join-submit">Присоединиться</button>
+        <button class="btn btn-primary" id="btn-join-submit">${t('setup.joinTitle')}</button>
       `;
       document.getElementById('btn-join-submit').onclick = async () => {
         const name = readName();
         const code = document.getElementById('join-code').value.trim();
-        if (!name) { showToast('Введите имя'); return; }
-        if (!code) { showToast('Введите код'); return; }
+        if (!name) { showToast(t('common.enterName')); return; }
+        if (!code) { showToast(t('setup.enterCode')); return; }
         const btn = document.getElementById('btn-join-submit');
-        btn.textContent = 'Входим...';
+        btn.textContent = t('setup.joining');
         btn.disabled = true;
         try {
           await updateDisplayName(name);
           const couple = await joinCouple(code, name);
           localStorage.removeItem(PENDING_INVITE_KEY);
-          showToast('Вы присоединились!');
+          showToast(t('setup.joined'));
           await enterApp(couple);
         } catch (err) {
-          showToast('Ошибка: ' + getReadableError(err));
-          btn.textContent = 'Присоединиться';
+          showToast(t('common.error', { msg: getReadableError(err) }));
+          btn.textContent = t('setup.joinTitle');
           btn.disabled = false;
         }
       };

@@ -1,14 +1,18 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
-import { applyTheme, getThemePref, THEME_LABELS } from '../services/theme.js';
-import { escapeHtml, icon } from '../lib/utils.js';
+import { applyTheme, getThemePref } from '../services/theme.js';
+import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
+import { LANG_LABELS, getLang, setLang, t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 
 const e = escapeHtml;
+
+// Подписи темы в UI берём из словаря (THEME_LABELS в services/theme.js не трогаем)
+const themeLabel = (pref) => t(`theme.${pref}`);
 
 async function fileToBlob(file) {
   const objectUrl = URL.createObjectURL(file);
@@ -70,11 +74,11 @@ async function uploadAvatarToStorage(file, profileId) {
 async function updateAvatar(file, profileId) {
   if (!file) return;
   if (!file.type.startsWith('image/')) {
-    showToast('Выбери изображение');
+    showToast(t('profile.chooseImage'));
     return;
   }
   if (file.size > 5 * 1024 * 1024) {
-    showToast('Файл слишком большой. Максимум 5MB');
+    showToast(t('profile.fileTooBig'));
     return;
   }
   try {
@@ -97,10 +101,10 @@ async function updateAvatar(file, profileId) {
       }
     }
     setState({ profile: refreshedProfile, members: nextMembers });
-    showToast('Фото профиля обновлено');
+    showToast(t('profile.photoUpdated'));
     navigate('/profile');
   } catch (err) {
-    showToast('Ошибка: ' + getReadableError(err));
+    showToast(t('common.error', { msg: getReadableError(err) }));
   }
 }
 
@@ -119,10 +123,10 @@ async function removeAvatar(profileId) {
       }
     }
     setState({ profile: refreshedProfile, members: nextMembers });
-    showToast('Фото удалено');
+    showToast(t('profile.photoRemoved'));
     navigate('/profile');
   } catch (err) {
-    showToast('Ошибка: ' + getReadableError(err));
+    showToast(t('common.error', { msg: getReadableError(err) }));
   }
 }
 
@@ -135,48 +139,48 @@ function showCoupleSettingsModal() {
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
-      <div class="modal-title">Настройки пары</div>
+      <div class="modal-title">${t('profile.coupleSettings')}</div>
       <div class="form-group">
-        <label class="form-label">Название</label>
+        <label class="form-label">${t('common.name')}</label>
         <input type="text" class="form-input" id="couple-name" value="${e(couple.name || 'Our Budget')}" autocomplete="off">
       </div>
       <div class="form-group">
-        <label class="form-label">Основная валюта</label>
+        <label class="form-label">${t('profile.mainCurrency')}</label>
         <select class="form-input" id="couple-currency">
-          <option value="THB" ${couple.currency === 'THB' ? 'selected' : ''}>THB (฿)</option>
-          <option value="RUB" ${couple.currency === 'RUB' ? 'selected' : ''}>RUB (₽)</option>
-          <option value="USD" ${couple.currency === 'USD' ? 'selected' : ''}>USD ($)</option>
+          ${Object.entries(CURRENCIES).map(([code, [sym]]) =>
+            `<option value="${code}" ${couple.currency === code ? 'selected' : ''}>${code} (${sym}) — ${currencyName(code)}</option>`
+          ).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Код приглашения для партнёра</label>
+        <label class="form-label">${t('profile.partnerInviteCode')}</label>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" class="form-input" value="${e(couple.invite_code)}" readonly style="flex:1;text-align:center;font-size:18px;letter-spacing:2px;font-weight:600;">
-          <button class="btn btn-secondary btn-small" id="btn-copy-couple-code">Копировать</button>
+          <button class="btn btn-secondary btn-small" id="btn-copy-couple-code">${t('common.copy')}</button>
         </div>
       </div>
-      <button class="btn btn-primary" id="btn-save-couple">Сохранить</button>
+      <button class="btn btn-primary" id="btn-save-couple">${t('common.save')}</button>
     </div>
   `;
   document.body.appendChild(backdrop);
   enableModalSwipe(backdrop);
   document.getElementById('btn-copy-couple-code')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(couple.invite_code).then(() => window.showToast('Скопировано'));
+    navigator.clipboard.writeText(couple.invite_code).then(() => window.showToast(t('common.copied')));
   });
   document.getElementById('btn-save-couple').onclick = async () => {
     const name = document.getElementById('couple-name').value.trim();
     const currency = document.getElementById('couple-currency').value;
-    if (!name) { showToast('Введите название'); return; }
+    if (!name) { showToast(t('common.enterTitle')); return; }
     try {
       const { error } = await supabase.from('couples').update({ name, currency }).eq('id', couple.id);
       if (error) throw error;
       const profile = await getProfile();
       setState({ couple: profile?.couples || couple, profile });
       backdrop.remove();
-      showToast('Настройки сохранены');
+      showToast(t('profile.settingsSaved'));
       navigate('/profile');
     } catch (err) {
-      showToast('Ошибка: ' + getReadableError(err));
+      showToast(t('common.error', { msg: getReadableError(err) }));
     }
   };
 }
@@ -191,25 +195,29 @@ export function registerProfileRoute() {
       : `<div class="profile-avatar">${initials}</div>`;
     app.innerHTML = `
       <div class="page-enter">
-        <div class="header"><div class="header-title">Профиль</div></div>
+        <div class="header"><div class="header-title">${t('profile.title')}</div></div>
         <div class="profile-section">
           <div class="profile-card">
             <div class="profile-avatar-wrap">
               ${avatarMarkup}
-              <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="Изменить фото">${icon('settings', 14)}</button>
+              <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="${t('profile.changePhotoAria')}">${icon('settings', 14)}</button>
               <input type="file" id="avatar-input" accept="image/*" style="display:none;">
             </div>
-            <div><div class="profile-name">${e(state.profile.display_name)}</div><div class="profile-email">${state.couple ? 'Ключ: ' + e(state.couple.invite_code) : ''}</div></div>
+            <div><div class="profile-name">${e(state.profile.display_name)}</div><div class="profile-email">${state.couple ? t('profile.keyLabel', { code: e(state.couple.invite_code) }) : ''}</div></div>
           </div>
-          <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>Изменить имя</span></div>
-          <div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>Удалить фото</span></div>
+          <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>${t('profile.editName')}</span></div>
+          <div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>${t('profile.removePhoto')}</span></div>
           ${state.couple ? `
-            <div class="profile-menu-item" id="btn-invite">${icon('heart', 20)}<span>Отправить приглашение партнёру</span></div>
-            <div class="profile-menu-item" id="btn-copy-code">${icon('link', 20)}<span>Код приглашения: <strong>${e(state.couple.invite_code)}</strong></span></div>
-            <div class="profile-menu-item" id="btn-settings">${icon('settings', 20)}<span>Настройки пары</span></div>
+            <div class="profile-menu-item" id="btn-invite">${icon('heart', 20)}<span>${t('profile.sendInvite')}</span></div>
+            <div class="profile-menu-item" id="btn-copy-code">${icon('link', 20)}<span>${t('profile.inviteCodeLabel')} <strong>${e(state.couple.invite_code)}</strong></span></div>
+            <div class="profile-menu-item" id="btn-settings">${icon('settings', 20)}<span>${t('profile.coupleSettings')}</span></div>
           ` : ''}
-          <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>Тема: <strong id="theme-current">${THEME_LABELS[getThemePref()]}</strong></span></div>
-          <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>Выйти</span></div>
+          ${state.couple ? `
+            <div class="profile-menu-item" id="btn-currency">${icon('credit-card', 20)}<span>${t('profile.currencyLabel')} <strong id="currency-current">${CURRENCIES[state.couple.currency]?.[0] || ''} ${e(state.couple.currency)}</strong></span></div>
+          ` : ''}
+          <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>${t('profile.themeLabel')} <strong id="theme-current">${themeLabel(getThemePref())}</strong></span></div>
+          <div class="profile-menu-item" id="btn-lang">${icon('globe', 20)}<span>${t('profile.languageLabel')} <strong id="lang-current">${LANG_LABELS[getLang()]}</strong></span></div>
+          <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>${t('profile.logout')}</span></div>
         </div>
       </div>
       ${renderTabBar()}
@@ -229,25 +237,25 @@ export function registerProfileRoute() {
       backdrop.innerHTML = `
         <div class="modal-sheet">
           <div class="modal-handle"></div>
-          <div class="modal-title">Изменить имя</div>
+          <div class="modal-title">${t('profile.editName')}</div>
           <div class="form-group"><input type="text" class="form-input" id="edit-display-name" value="${e(state.profile.display_name)}" autocomplete="name"></div>
-          <button class="btn btn-primary" id="btn-save-name">Сохранить</button>
+          <button class="btn btn-primary" id="btn-save-name">${t('common.save')}</button>
         </div>
       `;
       document.body.appendChild(backdrop);
       enableModalSwipe(backdrop);
       document.getElementById('btn-save-name').onclick = async () => {
         const name = document.getElementById('edit-display-name').value.trim();
-        if (!name) { showToast('Введите имя'); return; }
+        if (!name) { showToast(t('common.enterName')); return; }
         try {
           const { error } = await supabase.from('profiles').update({ display_name: name }).eq('id', state.profile.id);
           if (error) throw error;
           const refreshed = await getProfile();
           setState({ profile: refreshed });
           backdrop.remove();
-          showToast('Имя обновлено');
+          showToast(t('profile.nameUpdated'));
           navigate('/profile');
-        } catch (err) { showToast('Ошибка: ' + getReadableError(err)); }
+        } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
       };
     });
     document.getElementById('btn-remove-avatar')?.addEventListener('click', async () => {
@@ -256,16 +264,16 @@ export function registerProfileRoute() {
     document.getElementById('btn-invite')?.addEventListener('click', async () => {
       const link = inviteLink(state.couple.invite_code);
       if (navigator.share) {
-        try { await navigator.share({ title: 'CoupleExpenses', text: 'Присоединяйся к нашей паре', url: link }); } catch { /* отменили шаринг */ }
+        try { await navigator.share({ title: 'CoupleExpenses', text: t('invite.shareText'), url: link }); } catch { /* отменили шаринг */ }
       } else {
         navigator.clipboard.writeText(link)
-          .then(() => showToast('Ссылка скопирована'))
+          .then(() => showToast(t('common.linkCopied')))
           .catch(() => showToast(state.couple.invite_code));
       }
     });
     document.getElementById('btn-copy-code')?.addEventListener('click', () => {
       navigator.clipboard.writeText(state.couple.invite_code)
-        .then(() => showToast('Код скопирован'))
+        .then(() => showToast(t('profile.codeCopied')))
         .catch(() => showToast(state.couple.invite_code));
     });
     document.getElementById('btn-theme')?.addEventListener('click', () => {
@@ -276,9 +284,9 @@ export function registerProfileRoute() {
       backdrop.innerHTML = `
         <div class="modal-sheet">
           <div class="modal-handle"></div>
-          <div class="modal-title">Тема оформления</div>
-          ${['system', 'light', 'dark'].map((t) => `
-            <button class="btn ${t === current ? 'btn-primary' : 'btn-secondary'}" data-theme-option="${t}" style="margin-bottom:8px;">${THEME_LABELS[t]}</button>
+          <div class="modal-title">${t('profile.themeTitle')}</div>
+          ${['system', 'light', 'dark'].map((pref) => `
+            <button class="btn ${pref === current ? 'btn-primary' : 'btn-secondary'}" data-theme-option="${pref}" style="margin-bottom:8px;">${themeLabel(pref)}</button>
           `).join('')}
         </div>
       `;
@@ -287,8 +295,65 @@ export function registerProfileRoute() {
       backdrop.querySelectorAll('[data-theme-option]').forEach((btn) => {
         btn.addEventListener('click', () => {
           applyTheme(btn.dataset.themeOption);
-          document.getElementById('theme-current').textContent = THEME_LABELS[btn.dataset.themeOption];
+          document.getElementById('theme-current').textContent = themeLabel(btn.dataset.themeOption);
           backdrop.remove();
+        });
+      });
+    });
+    document.getElementById('btn-currency')?.addEventListener('click', () => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+      backdrop.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          <div class="modal-title">${t('profile.currencyTitle')}</div>
+          <div class="form-group">
+            <select class="form-input" id="currency-select">
+              ${Object.entries(CURRENCIES).map(([code, [sym]]) =>
+                `<option value="${code}" ${state.couple.currency === code ? 'selected' : ''}>${code} (${sym}) — ${currencyName(code)}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <button class="btn btn-primary" id="btn-save-currency">${t('common.save')}</button>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      enableModalSwipe(backdrop);
+      document.getElementById('btn-save-currency').onclick = async () => {
+        const currency = document.getElementById('currency-select').value;
+        try {
+          const { error } = await supabase.from('couples').update({ currency }).eq('id', state.couple.id);
+          if (error) throw error;
+          const profile = await getProfile();
+          setState({ couple: profile?.couples || state.couple, profile });
+          backdrop.remove();
+          showToast(t('profile.currencySaved'));
+          navigate('/profile');
+        } catch (err) {
+          showToast(t('common.error', { msg: getReadableError(err) }));
+        }
+      };
+    });
+    document.getElementById('btn-lang')?.addEventListener('click', () => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+      const current = getLang();
+      backdrop.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          <div class="modal-title">${t('profile.languageTitle')}</div>
+          ${['ru', 'en'].map((lang) => `
+            <button class="btn ${lang === current ? 'btn-primary' : 'btn-secondary'}" data-lang-option="${lang}" style="margin-bottom:8px;">${LANG_LABELS[lang]}</button>
+          `).join('')}
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      enableModalSwipe(backdrop);
+      backdrop.querySelectorAll('[data-lang-option]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          setLang(btn.dataset.langOption); // сохранит выбор и перезагрузит приложение
         });
       });
     });
