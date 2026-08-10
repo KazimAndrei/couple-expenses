@@ -207,7 +207,7 @@ select.form-input { cursor:pointer; }
 .balance-text { font-size:14px; color:var(--c-text-secondary); }
 .balance-amount { font-size:22px; font-weight:600; color:var(--c-accent); letter-spacing:-0.5px; }
 
-.auth-page { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:40px 24px; text-align:center; }
+.auth-page { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:calc(40px + var(--safe-top)) 24px calc(40px + var(--safe-bottom)); text-align:center; }
 .auth-logo { font-size:48px; margin-bottom:8px; }
 .auth-title { font-size:28px; font-weight:700; letter-spacing:-0.5px; margin-bottom:8px; }
 .auth-sub { font-size:15px; color:var(--c-text-secondary); margin-bottom:32px; line-height:1.5; }
