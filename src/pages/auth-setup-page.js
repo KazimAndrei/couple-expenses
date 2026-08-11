@@ -6,6 +6,8 @@ import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { initNativePush } from '../services/native-push.js';
+import { isPremiumActive, purchasesAvailable } from '../services/purchases.js';
+import { renderPaywall } from './paywall-page.js';
 
 const e = escapeHtml;
 const PENDING_INVITE_KEY = 'ce_pending_invite';
@@ -145,6 +147,15 @@ export function registerAuthSetupRoutes() {
     document.getElementById('btn-create').onclick = async () => {
       const name = readName();
       if (!name) { showToast(t('common.enterName')); return; }
+      // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
+      if (purchasesAvailable() && !(await isPremiumActive())) {
+        await updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
+        renderPaywall(app, {
+          onSuccess: () => navigate('/setup'),
+          onClose: () => navigate('/setup'),
+        });
+        return;
+      }
       try {
         await updateDisplayName(name);
         const couple = await createCouple();
