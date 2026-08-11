@@ -26,42 +26,69 @@ async function apnsJwt(): Promise<string> {
   return `${unsigned}.${b64url(new Uint8Array(sig))}`;
 }
 
-function formatAmount(amount: number, currency: string): string {
+type Lang = "ru" | "en";
+
+function formatAmount(amount: number, currency: string, lang: Lang): string {
   const symbols: Record<string, string> = { THB: "฿", USD: "$", EUR: "€", RUB: "₽", KZT: "₸", GBP: "£", JPY: "¥" };
-  const num = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(amount);
-  return `${num} ${symbols[currency] ?? currency}`;
+  const num = new Intl.NumberFormat(lang === "ru" ? "ru-RU" : "en-US", { maximumFractionDigits: 2 }).format(amount);
+  const sym = symbols[currency] ?? currency;
+  return lang === "ru" ? `${num} ${sym}` : `${sym}${num}`;
 }
+
+const MONTHS: Record<Lang, string[]> = {
+  ru: ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"],
+  en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+};
+
+const PARTNER: Record<Lang, string> = { ru: "Партнёр", en: "Partner" };
 
 // deno-lint-ignore no-explicit-any
 type Db = ReturnType<typeof createClient<any>>;
+// Тексты строятся под язык конкретного получателя
+type Localized = (lang: Lang) => { title: string; body: string };
 
-async function sendToUsers(db: Db, userIds: string[], title: string, body: string, extra: Record<string, unknown>) {
+async function sendToUsers(db: Db, userIds: string[], localized: Localized, extra: Record<string, unknown>) {
   if (!userIds.length) return [];
   const { data: tokens } = await db
     .from("device_push_tokens")
-    .select("user_id, token")
+    .select("user_id, token, lang")
     .in("user_id", userIds);
   if (!tokens?.length) return [];
+  if (!APNS_KEY_ID || !APNS_TEAM_ID || !APNS_PRIVATE_KEY) {
+    return [{ error: "APNS secrets missing" }];
+  }
   const jwt = await apnsJwt();
-  return await Promise.all(tokens.map(async ({ user_id, token }) => {
-    const res = await fetch(`${APNS_HOST}/3/device/${token}`, {
-      method: "POST",
-      headers: {
-        authorization: `bearer ${jwt}`,
-        "apns-topic": APNS_BUNDLE_ID,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-      },
-      body: JSON.stringify({ aps: { alert: { title, body }, sound: "default" }, ...extra }),
-    });
-    if (res.status === 410 || res.status === 400) {
-      const reason = (await res.json().catch(() => null))?.reason;
-      if (reason === "BadDeviceToken" || reason === "Unregistered") {
-        await db.from("device_push_tokens").delete().eq("user_id", user_id).eq("token", token);
-      }
-      return { token, status: res.status, reason };
+
+  const post = (host: string, token: string, payload: string) => fetch(`${host}/3/device/${token}`, {
+    method: "POST",
+    headers: {
+      authorization: `bearer ${jwt}`,
+      "apns-topic": APNS_BUNDLE_ID,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+    },
+    body: payload,
+  });
+
+  return await Promise.all(tokens.map(async ({ user_id, token, lang }) => {
+    const { title, body } = localized(lang === "ru" ? "ru" : "en");
+    const payload = JSON.stringify({ aps: { alert: { title, body }, sound: "default" }, ...extra });
+
+    let host = APNS_HOST;
+    let res = await post(host, token, payload);
+    let reason = res.ok ? undefined : (await res.json().catch(() => null))?.reason;
+
+    // Dev-сборки регистрируются в sandbox: prod-эндпоинт отвечает BadDeviceToken — пробуем sandbox
+    if (reason === "BadDeviceToken" && host === "https://api.push.apple.com") {
+      host = "https://api.sandbox.push.apple.com";
+      res = await post(host, token, payload);
+      reason = res.ok ? undefined : (await res.json().catch(() => null))?.reason;
     }
-    return { token, status: res.status };
+
+    if (res.status === 410 || reason === "Unregistered") {
+      await db.from("device_push_tokens").delete().eq("user_id", user_id).eq("token", token);
+    }
+    return { token: token.slice(0, 8), status: res.status, reason, host };
   }));
 }
 
@@ -70,7 +97,6 @@ async function coupleMembers(db: Db, coupleId: string): Promise<{ id: string; di
   return data ?? [];
 }
 
-// Пуш о достижении цели — всем участникам пары
 async function maybeGoalReachedPush(db: Db, goalId: string, coupleId: string, currency: string) {
   const { data: goal } = await db
     .from("goals").select("id, name, target_amount, current_amount").eq("id", goalId).maybeSingle();
@@ -78,13 +104,12 @@ async function maybeGoalReachedPush(db: Db, goalId: string, coupleId: string, cu
   const members = await coupleMembers(db, coupleId);
   return await sendToUsers(
     db, members.map((m) => m.id),
-    "Цель достигнута 🎉",
-    `«${goal.name}» — ${formatAmount(Number(goal.target_amount), currency)} собраны!`,
+    (lang) => lang === "ru"
+      ? { title: "Цель достигнута 🎉", body: `«${goal.name}» — ${formatAmount(Number(goal.target_amount), currency, lang)} собраны!` }
+      : { title: "Goal reached 🎉", body: `“${goal.name}” — ${formatAmount(Number(goal.target_amount), currency, lang)} saved!` },
     { goal_id: goal.id },
   );
 }
-
-const MONTHS_RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 
 function monthRange(monthKey: string): { start: string; end: string } {
   const [y, m] = monthKey.split("-").map(Number);
@@ -123,15 +148,24 @@ async function maybeBudgetAlert(db: Db, expense: { couple_id: string; category_i
   const spent = await monthSpend(db, expense.couple_id, monthKey, expense.category_id);
   const before = (spent - Number(expense.amount)) / limit;
   const after = spent / limit;
-  let title = "";
-  if (before < 1 && after >= 1) title = `Бюджет «${categoryName ?? "категория"}» исчерпан`;
-  else if (before < 0.8 && after >= 0.8) title = `Бюджет «${categoryName ?? "категория"}»: 80%`;
-  else return [];
+  const full = before < 1 && after >= 1;
+  const warn = before < 0.8 && after >= 0.8;
+  if (!full && !warn) return [];
   const members = await coupleMembers(db, expense.couple_id);
   return await sendToUsers(
     db, members.map((m) => m.id),
-    title,
-    `Потрачено ${formatAmount(spent, expense.currency)} из ${formatAmount(limit, expense.currency)}`,
+    (lang) => {
+      const cat = categoryName ?? (lang === "ru" ? "категория" : "category");
+      return lang === "ru"
+        ? {
+          title: full ? `Бюджет «${cat}» исчерпан` : `Бюджет «${cat}»: 80%`,
+          body: `Потрачено ${formatAmount(spent, expense.currency, lang)} из ${formatAmount(limit, expense.currency, lang)}`,
+        }
+        : {
+          title: full ? `“${cat}” budget spent` : `“${cat}” budget: 80%`,
+          body: `${formatAmount(spent, expense.currency, lang)} of ${formatAmount(limit, expense.currency, lang)} used`,
+        };
+    },
     { budget_category_id: expense.category_id },
   );
 }
@@ -174,18 +208,19 @@ Deno.serve(async (req: Request) => {
 
     if (spent === 0 && saved === 0) return new Response("nothing to report", { status: 200 });
 
-    const monthName = MONTHS_RU[m - 1] ?? monthKey;
-    const trend = prevSpent > 0
-      ? ` (${spent >= prevSpent ? "+" : "−"}${Math.abs(Math.round((spent / prevSpent - 1) * 100))}% к прошлому)`
-      : "";
-    const parts = [`потрачено ${formatAmount(spent, couple.currency)}${trend}`];
-    if (saved > 0) parts.push(`отложено ${formatAmount(saved, couple.currency)}`);
-
+    const pct = prevSpent > 0 ? Math.round((spent / prevSpent - 1) * 100) : null;
     const members = await coupleMembers(db, coupleId);
     const sent = await sendToUsers(
       db, members.map((mm) => mm.id),
-      `Итоги: ${monthName}`,
-      parts.join(" · "),
+      (lang) => {
+        const monthName = MONTHS[lang][m - 1] ?? monthKey;
+        const trend = pct === null ? "" : ` (${pct >= 0 ? "+" : "−"}${Math.abs(pct)}%${lang === "ru" ? " к прошлому" : " vs last"})`;
+        const parts = lang === "ru"
+          ? [`потрачено ${formatAmount(spent, couple.currency, lang)}${trend}`]
+          : [`spent ${formatAmount(spent, couple.currency, lang)}${trend}`];
+        if (saved > 0) parts.push(lang === "ru" ? `отложено ${formatAmount(saved, couple.currency, lang)}` : `saved ${formatAmount(saved, couple.currency, lang)}`);
+        return { title: lang === "ru" ? `Итоги: ${monthName}` : `${monthName} recap`, body: parts.join(" · ") };
+      },
       { monthly_summary: monthKey },
     );
     return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
@@ -200,18 +235,19 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     const goal = contrib?.goals as { id: string; name: string; couple_id: string } | null;
     if (!contrib || !goal) return new Response("contribution not found", { status: 404 });
-    if (Date.now() - new Date(contrib.created_at).getTime() > 5 * 60 * 1000) return new Response("stale", { status: 200 });
 
     const { data: couple } = await db.from("couples").select("currency").eq("id", goal.couple_id).maybeSingle();
-    const currency = couple?.currency ?? "THB";
+    const currency = couple?.currency ?? "USD";
     const members = await coupleMembers(db, goal.couple_id);
-    const author = members.find((m) => m.id === contrib.contributed_by)?.display_name || "Партнёр";
+    const authorName = members.find((m) => m.id === contrib.contributed_by)?.display_name;
     const partnerIds = members.filter((m) => m.id !== contrib.contributed_by).map((m) => m.id);
 
     const sent = await sendToUsers(
       db, partnerIds,
-      "Пополнение цели",
-      `${author} · +${formatAmount(Number(contrib.amount), currency)} · «${goal.name}»`,
+      (lang) => ({
+        title: lang === "ru" ? "Пополнение цели" : "Goal contribution",
+        body: `${authorName || PARTNER[lang]} · +${formatAmount(Number(contrib.amount), currency, lang)} · ${lang === "ru" ? `«${goal.name}»` : `“${goal.name}”`}`,
+      }),
       { goal_id: goal.id },
     );
     const reached = await maybeGoalReachedPush(db, goal.id, goal.couple_id, currency);
@@ -227,19 +263,25 @@ Deno.serve(async (req: Request) => {
     .eq("id", body.expense_id)
     .maybeSingle();
   if (!expense) return new Response("expense not found", { status: 404 });
-  if (Date.now() - new Date(expense.created_at).getTime() > 5 * 60 * 1000) return new Response("stale", { status: 200 });
 
   const members = await coupleMembers(db, expense.couple_id);
   const partnerIds = members.filter((m) => m.id !== expense.paid_by).map((m) => m.id);
-  const payer = expense.paid_by_snapshot_name || "Партнёр";
+  // Имя плательщика: снепшот → текущий профиль → локализованный fallback
+  const payerName = expense.paid_by_snapshot_name
+    || members.find((m) => m.id === expense.paid_by)?.display_name
+    || null;
 
   const linked = (expense.goal_contributions as { goal_id: string; goals: { id: string; name: string } | null }[] | null)?.[0];
   if (linked?.goals) {
     // Накопление, не трата
     const sent = await sendToUsers(
       db, partnerIds,
-      "Накопление",
-      `${payer} отложил ${formatAmount(Number(expense.amount), expense.currency)} на «${linked.goals.name}»`,
+      (lang) => ({
+        title: lang === "ru" ? "Накопление" : "Saving",
+        body: lang === "ru"
+          ? `${payerName || PARTNER.ru} отложил ${formatAmount(Number(expense.amount), expense.currency, lang)} на «${linked.goals!.name}»`
+          : `${payerName || PARTNER.en} saved ${formatAmount(Number(expense.amount), expense.currency, lang)} toward “${linked.goals!.name}”`,
+      }),
       { expense_id: expense.id, goal_id: linked.goals.id },
     );
     const reached = await maybeGoalReachedPush(db, linked.goals.id, expense.couple_id, expense.currency);
@@ -249,8 +291,10 @@ Deno.serve(async (req: Request) => {
   const category = (expense.categories as { name?: string } | null)?.name;
   const sent = await sendToUsers(
     db, partnerIds,
-    `−${formatAmount(Number(expense.amount), expense.currency)}`,
-    [payer, category, expense.description].filter(Boolean).join(" · "),
+    (lang) => ({
+      title: `−${formatAmount(Number(expense.amount), expense.currency, lang)}`,
+      body: [payerName || PARTNER[lang], category, expense.description].filter(Boolean).join(" · "),
+    }),
     { expense_id: expense.id },
   );
   const budgetAlert = await maybeBudgetAlert(db, expense as never, category);

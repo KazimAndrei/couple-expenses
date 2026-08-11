@@ -1,19 +1,21 @@
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase.js';
 import { diagError, diagStep } from './diagnostics.js';
-import { showToast } from './toast.js';
+import { getLang } from '../lib/i18n.js';
 
 let initialized = false;
 
-// Видимая диагностика регистрации пушей — только в dev-сборках (гостевой флаг)
-const PUSH_DEBUG = import.meta.env.VITE_ENABLE_GUEST === '1';
-const dbg = (msg) => { if (PUSH_DEBUG) showToast(`[push] ${msg}`); };
+// Шаги регистрации пушей — в diagnostics-панель (window.showDiagnostics в dev)
+const dbg = (msg) => diagStep(`push: ${msg}`);
 
 export async function initNativePush() {
+  dbg(`enter (native=${Capacitor.isNativePlatform()}, initialized=${initialized})`);
   if (!Capacitor.isNativePlatform() || initialized) return;
   initialized = true;
   try {
+    dbg('importing plugin…');
     const { PushNotifications } = await import('@capacitor/push-notifications');
+    dbg('plugin imported');
 
     let perm = await PushNotifications.checkPermissions();
     dbg(`perm: ${perm.receive}`);
@@ -29,6 +31,7 @@ export async function initNativePush() {
           user_id: user.id,
           token: value,
           platform: 'ios',
+          lang: getLang(), // язык интерфейса → язык пушей
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,token' });
         if (error) { dbg(`save error: ${error.message}`); diagError('push token save failed', error); return; }
