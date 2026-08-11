@@ -18,12 +18,14 @@ import { registerHomeRoute } from './pages/home-page.js';
 import { registerAnalyticsRoute } from './pages/analytics-page.js';
 import { registerGoalsRoute } from './pages/goals-page.js';
 import { registerProfileRoute } from './pages/profile-page.js';
+import { registerPaywallRoute } from './pages/paywall-page.js';
 
 registerAuthSetupRoutes();
 registerHomeRoute();
 registerAnalyticsRoute();
 registerGoalsRoute();
 registerProfileRoute();
+registerPaywallRoute();
 
 function renderBootLoader(app) {
   app.innerHTML = `

@@ -431,3 +431,26 @@ select.form-input { cursor:pointer; }
   pointer-events: none;
   z-index: 1;
 }
+
+/* ---- Paywall (владелец пары; приглашённый сюда не попадает) ---- */
+.paywall { min-height:100dvh; padding:calc(20px + var(--safe-top)) 20px calc(24px + var(--safe-bottom)); display:flex; flex-direction:column; }
+.paywall-close { position:absolute; top:calc(14px + var(--safe-top)); right:16px; width:34px; height:34px; border-radius:50%; border:none; background:var(--c-surface-alt); color:var(--c-text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.paywall-hero { text-align:center; padding:22px 0 18px; }
+.paywall-icon { width:64px; height:64px; border-radius:20px; background:linear-gradient(140deg, var(--c-accent), var(--c-accent-dark)); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; box-shadow:0 10px 28px rgba(29,158,117,0.35); }
+.paywall-title { font-size:27px; line-height:1.2; letter-spacing:-0.01em; margin-bottom:8px; }
+.paywall-sub { font-size:15px; color:var(--c-text-secondary); max-width:320px; margin:0 auto; }
+.paywall-features { display:flex; flex-direction:column; gap:11px; margin:6px 0 22px; }
+.paywall-feature { display:flex; align-items:flex-start; gap:10px; font-size:15px; }
+.paywall-check { width:22px; height:22px; border-radius:50%; background:var(--c-accent-light); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.paywall-plans { display:flex; gap:10px; margin-bottom:16px; }
+.paywall-plan { position:relative; flex:1; padding:16px 12px 14px; border-radius:var(--radius); border:2px solid var(--c-border); background:var(--c-surface); text-align:center; cursor:pointer; font-family:var(--font); color:var(--c-text); transition:border-color 0.15s, background 0.15s; }
+.paywall-plan.selected { border-color:var(--c-accent); background:var(--c-accent-light); }
+.paywall-plan-name { font-size:13px; color:var(--c-text-secondary); margin-bottom:4px; }
+.paywall-plan-price { font-size:22px; font-weight:700; }
+.paywall-plan-price span { font-size:13px; font-weight:500; color:var(--c-text-secondary); }
+.paywall-plan-note { font-size:12px; color:var(--c-accent); margin-top:3px; }
+.paywall-badge { position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:var(--c-accent); color:#fff; font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+.paywall-cta { margin-top:auto; }
+.paywall-terms { font-size:11px; line-height:1.45; color:var(--c-text-muted); text-align:center; margin:12px 0 10px; }
+.paywall-links { display:flex; justify-content:center; gap:16px; flex-wrap:wrap; }
+.paywall-link { background:none; border:none; padding:0; font:inherit; font-size:12px; color:var(--c-text-secondary); text-decoration:underline; cursor:pointer; font-family:var(--font); }
