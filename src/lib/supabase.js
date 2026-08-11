@@ -42,13 +42,18 @@ export async function signInWithApple() {
     if (error) throw error;
 
     // Apple отдаёт имя только при самом первом входе — сохраняем его сразу.
-    const appleName = [response.givenName, response.familyName].filter(Boolean).join(' ').trim();
-    if (appleName && data?.user) {
-      const { data: profile } = await supabase
-        .from('profiles').select('display_name').eq('id', data.user.id).maybeSingle();
-      if (!profile?.display_name || ['', 'User', 'Пользователь'].includes(profile.display_name)) {
-        await supabase.from('profiles').update({ display_name: appleName }).eq('id', data.user.id);
+    // Вход уже состоялся: любая ошибка здесь не должна ронять авторизацию.
+    try {
+      const appleName = [response.givenName, response.familyName].filter(Boolean).join(' ').trim();
+      if (appleName && data?.user) {
+        const { data: profile } = await supabase
+          .from('profiles').select('display_name').eq('id', data.user.id).maybeSingle();
+        if (!profile?.display_name || ['', 'User', 'Пользователь'].includes(profile.display_name)) {
+          await supabase.from('profiles').update({ display_name: appleName }).eq('id', data.user.id);
+        }
       }
+    } catch (nameErr) {
+      console.error('apple name save failed:', nameErr);
     }
     return data;
   }

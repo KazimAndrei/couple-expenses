@@ -104,9 +104,18 @@ export function registerAuthSetupRoutes() {
       } catch (err) {
         if (err?.message?.includes('1001') || err?.code === '1001') {
           // юзер закрыл окно Apple — не ошибка
-        } else {
-          showToast(t('auth.signInError', { msg: getReadableError(err) }));
+          btn.disabled = false;
+          return;
         }
+        // Сессия могла успешно создаться до сбоя — тогда не держим юзера на экране входа
+        const session = await getSession().catch(() => null);
+        if (session) {
+          const profile = await getProfile().catch(() => null);
+          if (profile?.couple_id) { await enterApp(profile.couples); return; }
+          navigate('/setup');
+          return;
+        }
+        showToast(t('auth.signInError', { msg: getReadableError(err) }));
         btn.disabled = false;
       }
     };
