@@ -154,16 +154,28 @@ export function registerAuthSetupRoutes() {
     const readName = () => document.getElementById('setup-name').value.trim();
 
     document.getElementById('btn-create').onclick = async () => {
+      const btnCreate = document.getElementById('btn-create');
+      if (btnCreate.dataset.busy === '1') return;
       const name = readName();
       if (!name) { showToast(t('common.enterName')); return; }
-      // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
-      if (purchasesAvailable() && !(await isPremiumActive())) {
-        await updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
-        renderPaywall(app, {
-          onSuccess: () => navigate('/setup'),
-          onClose: () => navigate('/setup'),
-        });
-        return;
+      btnCreate.dataset.busy = '1';
+      btnCreate.style.opacity = '0.6';
+      try {
+        // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
+        if (purchasesAvailable() && !(await isPremiumActive())) {
+          await updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
+          renderPaywall(app, {
+            onSuccess: () => navigate('/setup'),
+            onClose: () => navigate('/setup'),
+          });
+          return;
+        }
+      } catch (gateErr) {
+        // Сбой стора не должен мешать создать пару — доступ всё равно проверяется на сервере
+        console.error('paywall gate failed:', gateErr);
+      } finally {
+        btnCreate.dataset.busy = '0';
+        btnCreate.style.opacity = '';
       }
       try {
         await updateDisplayName(name);

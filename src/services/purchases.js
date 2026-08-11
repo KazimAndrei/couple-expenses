@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase.js';
 import { diagError, diagStep } from './diagnostics.js';
+// diagStep/diagError пишут только в dev-сборках — в релиз ничего не попадает
 
 // RevenueCat: подписку покупает владелец пары, партнёр пользуется бесплатно.
 // appUserID = id пользователя Supabase, чтобы покупка следовала за аккаунтом, а не за устройством.
@@ -66,14 +67,21 @@ export async function restorePurchases() {
   return hasEntitlement(customerInfo);
 }
 
-// Активен ли премиум по данным стора (источник истины для UI до прихода вебхука)
-export async function isPremiumActive() {
+// Активен ли премиум по данным стора (источник истины для UI до прихода вебхука).
+// Никогда не висит и не бросает: сбой стора не должен блокировать интерфейс.
+export async function isPremiumActive({ timeoutMs = 5000 } = {}) {
   if (!purchasesAvailable()) return false;
-  await initPurchases();
-  try {
+  const check = (async () => {
+    await initPurchases();
     const Purchases = await plugin();
     const { customerInfo } = await Purchases.getCustomerInfo();
     return hasEntitlement(customerInfo);
+  })();
+  try {
+    return await Promise.race([
+      check,
+      new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]).then((v) => (v === null ? (diagStep('purchases: check timed out'), false) : v));
   } catch (err) {
     diagError('getCustomerInfo failed', err);
     return false;
