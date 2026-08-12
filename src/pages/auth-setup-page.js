@@ -162,11 +162,20 @@ export function registerAuthSetupRoutes() {
       btnCreate.style.opacity = '0.6';
       try {
         // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
-        if (purchasesAvailable() && !(await isPremiumActive())) {
+        // Гость (dev-режим) может закрыть пейволл крестиком и продолжить без подписки.
+        const skipKey = 'ce_paywall_skip';
+        if (purchasesAvailable() && !sessionStorage.getItem(skipKey) && !(await isPremiumActive())) {
           await updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
+          const isGuest = session?.user?.is_anonymous === true;
           renderPaywall(app, {
             onSuccess: () => navigate('/setup'),
-            onClose: () => navigate('/setup'),
+            onClose: () => {
+              if (isGuest) {
+                sessionStorage.setItem(skipKey, '1');
+                showToast(t('paywall.guestSkipped'));
+              }
+              navigate('/setup');
+            },
           });
           return;
         }
