@@ -421,23 +421,6 @@ export async function getPayerTotals(coupleId, month) {
   return data || [];
 }
 
-export async function getBalance(coupleId) {
-  const { data, error } = await supabase
-    .from('balance_between_partners').select('*').eq('couple_id', coupleId);
-  if (error) throw error;
-  return data || [];
-}
-
-export async function getSettlements(coupleId) {
-  const { data, error } = await supabase
-    .from('settlements')
-    .select('settled_by, amount, note, settled_at')
-    .eq('couple_id', coupleId)
-    .order('settled_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
-}
-
 // ---- Receipts ----
 export async function uploadReceipt(file, coupleId) {
   const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
@@ -455,18 +438,6 @@ export async function receiptUrl(pathOrUrl) {
   const { data, error } = await supabase.storage.from('receipts').createSignedUrl(pathOrUrl, 3600);
   if (error) { console.error('receipt url failed:', error); return null; }
   return data?.signedUrl || null;
-}
-
-// ---- Settlement helpers ----
-// settledBy — кто погасил долг (должник); по умолчанию текущий юзер
-export async function addSettlement(coupleId, amount, note = '', settledBy = null) {
-  const user = await currentUser();
-  const { data, error } = await supabase
-    .from('settlements')
-    .insert({ couple_id: coupleId, settled_by: settledBy || user.id, amount, note })
-    .select().single();
-  if (error) throw error;
-  return data;
 }
 
 // ---- Realtime ----

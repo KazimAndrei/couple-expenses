@@ -15,8 +15,6 @@ vi.mock('../lib/supabase.js', () => ({
   getCoupleMembers: vi.fn(),
   getIncome: vi.fn(),
   getIncomeEntries: vi.fn(),
-  getBalance: vi.fn().mockResolvedValue([]),
-  getSettlements: vi.fn().mockResolvedValue([]),
 }));
 
 import {

@@ -1,4 +1,4 @@
-import { getBalance, getCategories, getBudgets, getCoupleMembers, getExpenses, getGoals, getIncome, getIncomeEntries, getSettlements } from '../lib/supabase.js';
+import { getCategories, getBudgets, getCoupleMembers, getExpenses, getGoals, getIncome, getIncomeEntries } from '../lib/supabase.js';
 import { getState, setState } from '../lib/store.js';
 import { currentMonth } from '../lib/utils.js';
 import { diagError, diagStep } from './diagnostics.js';
@@ -45,7 +45,9 @@ export async function loadAll() {
   const month = getState().currentMonth || currentMonth();
   try {
     diagStep(`loadAll: ${month}`);
-    const [expenses, categories, budgets, goals, members, monthlyIncome, incomeEntries, balanceRows, settlements] = await Promise.all([
+    // Баланс и взаиморасчёты больше не запрашиваем: расход фиксируется за плательщиком
+    // и долгов между участниками не возникает
+    const [expenses, categories, budgets, goals, members, monthlyIncome, incomeEntries] = await Promise.all([
       getExpenses(couple.id, month),
       getCategories(couple.id),
       getBudgets(couple.id, month),
@@ -53,10 +55,8 @@ export async function loadAll() {
       getCoupleMembers(couple.id),
       getIncome(couple.id, month),
       getIncomeEntries(couple.id, month),
-      getBalance(couple.id).catch(() => []),
-      getSettlements(couple.id).catch(() => []),
     ]);
-    const data = { expenses, categories, budgets, goals, members, monthlyIncome, incomeEntries, balanceRows, settlements };
+    const data = { expenses, categories, budgets, goals, members, monthlyIncome, incomeEntries };
     setState({ ...data, currentMonth: month });
     writeCache(couple.id, month, data);
   } catch (err) {
@@ -71,8 +71,6 @@ export async function loadAll() {
       members: cached?.members || [],
       monthlyIncome: cached?.monthlyIncome || 0,
       incomeEntries: cached?.incomeEntries || [],
-      balanceRows: cached?.balanceRows || [],
-      settlements: cached?.settlements || [],
       currentMonth: month,
     });
   }

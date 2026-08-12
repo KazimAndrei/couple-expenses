@@ -1,6 +1,6 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
+import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
@@ -609,73 +609,6 @@ function showExpenseActionsModal(expense, app) {
   };
 }
 
-// Нетто-долг между участниками: balance_between_partners за вычетом взаиморасчётов.
-// Возвращает { from, to, amount } (кто кому должен) или null (в расчёте / пара неполная).
-function computeCoupleDebt(sides) {
-  const { memberA, memberB } = sides;
-  if (!memberA || !memberB) return null;
-  const { balanceRows = [], settlements = [] } = getState();
-  const owedTo = (id) => balanceRows
-    .filter((r) => r.paid_by === id)
-    .reduce((s, r) => s + parseFloat(r.amount_owed_to_payer || 0), 0);
-  const settledBy = (id) => settlements
-    .filter((s) => s.settled_by === id)
-    .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
-  // Долг B перед A = сколько B должен A минус что B уже вернул (и наоборот)
-  const net = (owedTo(memberA.id) - settledBy(memberB.id)) - (owedTo(memberB.id) - settledBy(memberA.id));
-  if (Math.abs(net) < 1) return null;
-  return net > 0
-    ? { from: memberB, to: memberA, amount: net }
-    : { from: memberA, to: memberB, amount: -net };
-}
-
-function showSettlementsModal(sides, couple) {
-  const { settlements = [] } = getState();
-  const nameOf = (id) => {
-    const m = [sides.memberA, sides.memberB].find((x) => x?.id === id);
-    return m ? memberDisplayLabel(m) : t('common.partner');
-  };
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
-  backdrop.innerHTML = `
-    <div class="modal-sheet">
-      <div class="modal-handle"></div>
-      <div class="modal-title">${t('home.settlementsTitle')}</div>
-      ${settlements.length === 0
-        ? `<p style="font-size:14px; color:var(--c-text-secondary);">${t('home.noSettlements')}</p>`
-        : settlements.map((s) => `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--c-border);">
-            <div>
-              <div style="font-size:14px;">${e(nameOf(s.settled_by))}</div>
-              <div style="font-size:12px; color:var(--c-text-secondary);">${formatDateTime(s.settled_at)}</div>
-            </div>
-            <strong>${formatMoney(s.amount, couple?.currency)}</strong>
-          </div>
-        `).join('')}
-    </div>
-  `;
-  document.body.appendChild(backdrop);
-  enableModalSwipe(backdrop);
-}
-
-function renderBalanceCard(sides, couple) {
-  if (!sides.memberA || !sides.memberB) return '';
-  const debt = computeCoupleDebt(sides);
-  return `
-    <div class="balance-card">
-      <div class="summary-label">${t('home.balanceTitle')}</div>
-      ${debt ? `
-        <div class="balance-row">
-          <div class="balance-text">${t('home.balanceOwes', { from: e(memberDisplayLabel(debt.from)), to: e(memberDisplayLabel(debt.to)) })}
-            <strong>${formatMoney(debt.amount, couple?.currency)}</strong></div>
-          <button class="btn btn-secondary btn-small" id="btn-settle-up">${t('home.settleUp')}</button>
-        </div>
-      ` : `<div class="balance-text balance-even">${t('home.balanceEven')}</div>`}
-    </div>
-  `;
-}
-
 function renderHome(app) {
   const { expenses, currentMonth: month, couple, profile, members, filterBy, searchQuery } = getState();
   const sides = resolveMemberSides(members);
@@ -740,7 +673,6 @@ function renderHome(app) {
         <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
         <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: spendable.length })}</div>
       </div>
-      ${renderBalanceCard(sides, couple)}
       <div class="tx-section">
         ${grouped.length === 0 ? `
           <div class="empty-state">
@@ -793,22 +725,6 @@ function renderHome(app) {
     ${renderTabBar()}
   `;
   document.getElementById('add-exp-btn').onclick = showAddExpenseModal;
-  document.querySelector('.balance-card')?.addEventListener('click', (ev) => {
-    if (ev.target.closest('#btn-settle-up')) return; // кнопка расчёта — отдельное действие
-    showSettlementsModal(sides, couple);
-  });
-  document.getElementById('btn-settle-up')?.addEventListener('click', async () => {
-    const debt = computeCoupleDebt(resolveMemberSides(getState().members));
-    if (!debt) return;
-    try {
-      await addSettlement(getState().couple.id, Math.round(debt.amount * 100) / 100, 'settle up', debt.from.id);
-      showToast(t('home.settledToast'));
-      await loadAll();
-      if (getCurrentPath() === '/') renderHome(document.getElementById('app'));
-    } catch (err) {
-      showToast(t('common.error', { msg: getReadableError(err) }));
-    }
-  });
   document.getElementById('btn-edit-income')?.addEventListener('click', () => {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
