@@ -581,13 +581,13 @@ const DAYS_SHORT = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 };
 
+// Приложение для рынка США: по умолчанию английский, русский — только по явному выбору
 export function getLang() {
   try {
-    const value = localStorage.getItem(LANG_KEY);
-    return value === 'en' ? 'en' : 'ru';
+    return localStorage.getItem(LANG_KEY) === 'ru' ? 'ru' : 'en';
   } catch {
-    // localStorage недоступен (node/тесты/приватный режим) — дефолт ru
-    return 'ru';
+    // localStorage недоступен (node/тесты/приватный режим)
+    return 'en';
   }
 }
 

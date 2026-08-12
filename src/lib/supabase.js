@@ -127,7 +127,7 @@ export async function createCouple(name = 'Our Budget', currency) {
   // Валюта: выбранная на экране логина до создания пары (ce_pending_currency) или THB.
   const { data: couple, error } = await supabase.rpc('create_couple', {
     p_name: name,
-    p_currency: currency || localStorage.getItem('ce_pending_currency') || 'THB',
+    p_currency: currency || localStorage.getItem('ce_pending_currency') || 'USD',
   });
   if (error) throw error;
   localStorage.removeItem('ce_pending_currency');

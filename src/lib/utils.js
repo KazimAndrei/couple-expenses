@@ -75,7 +75,7 @@ export function currencyName(code) {
   }
 }
 
-export function formatMoney(amount, currency = 'THB') {
+export function formatMoney(amount, currency = 'USD') {
   const sym = CURRENCIES[currency]?.[0] || currency;
   return `${getFormatter(currency).format(Math.round(amount))} ${sym}`;
 }

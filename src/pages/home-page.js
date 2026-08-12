@@ -344,7 +344,7 @@ async function showAddExpenseModal() {
       split,
       split_payer_pct: splitPct,
       expense_date: date,
-      currency: couple.currency || 'THB',
+      currency: couple.currency || 'USD',
       receipt_url: receiptUrl,
     };
 
@@ -401,7 +401,7 @@ async function showAddExpenseModal() {
           description,
           split,
           split_payer_pct: splitPct,
-          currency: couple.currency || 'THB',
+          currency: couple.currency || 'USD',
           day_of_month: Number(date.slice(8, 10)),
         });
       } catch (recErr) {
@@ -851,7 +851,7 @@ function renderHome(app) {
           `).join('')}
         </div>
         <div class="form-group">
-          <label class="form-label">${t('home.addIncomeLabel', { currency: couple?.currency || 'THB' })}</label>
+          <label class="form-label">${t('home.addIncomeLabel', { currency: couple?.currency || 'USD' })}</label>
           <input type="number" class="form-input amount" id="income-add" placeholder="0" inputmode="decimal" min="0" step="0.01">
         </div>
         <button class="btn btn-primary" id="btn-save-income">${t('common.add')}</button>

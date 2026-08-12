@@ -57,7 +57,7 @@ export function registerAuthSetupRoutes() {
               <label class="form-label">${t('profile.currencyTitle')}</label>
               <select class="form-input" id="auth-currency">
                 ${Object.entries(CURRENCIES).map(([code, [sym]]) =>
-                  `<option value="${code}" ${(localStorage.getItem('ce_pending_currency') || 'THB') === code ? 'selected' : ''}>${code} (${sym})</option>`
+                  `<option value="${code}" ${(localStorage.getItem('ce_pending_currency') || 'USD') === code ? 'selected' : ''}>${code} (${sym})</option>`
                 ).join('')}
               </select>
             </div>

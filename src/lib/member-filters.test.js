@@ -46,9 +46,9 @@ describe('memberDisplayLabel', () => {
     expect(memberDisplayLabel(members[0])).toBe('Аня');
   });
 
-  it('fallback на нейтральное «Партнёр» без имени', () => {
-    expect(memberDisplayLabel({ id: 'x', display_name: '' })).toBe('Партнёр');
-    expect(memberDisplayLabel(null)).toBe('Партнёр');
+  it('fallback на нейтральное «Partner» без имени', () => {
+    expect(memberDisplayLabel({ id: 'x', display_name: '' })).toBe('Partner');
+    expect(memberDisplayLabel(null)).toBe('Partner');
   });
 });
 
@@ -96,8 +96,8 @@ describe('filterExpensesByMemberChip (manual checklist as tests)', () => {
 describe('resolvePayerLabel', () => {
   const sides = resolveMemberSides(members);
 
-  it('equal → Общее', () => {
-    expect(resolvePayerLabel({ split: 'equal', paid_by: 'id-a' }, sides)).toBe('Общее');
+  it('equal → Shared', () => {
+    expect(resolvePayerLabel({ split: 'equal', paid_by: 'id-a' }, sides)).toBe('Shared');
   });
 
   it('известный id memberA → его display_name', () => {
@@ -118,13 +118,13 @@ describe('resolvePayerLabel', () => {
     expect(resolvePayerLabel(exp, sides)).toBe('Гость');
   });
 
-  it('участник без display_name → нейтральный fallback «Партнёр»', () => {
+  it('участник без display_name → нейтральный fallback «Partner»', () => {
     const m = [
       { id: 'id-a', display_name: '', avatar_url: null, created_at: '2026-01-01' },
       { id: 'id-b', display_name: 'Борис', avatar_url: null, created_at: '2026-01-02' },
     ];
     const s = resolveMemberSides(m);
-    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-a' }, s)).toBe('Партнёр');
+    expect(resolvePayerLabel({ split: 'full_payer', paid_by: 'id-a' }, s)).toBe('Partner');
   });
 
   it('удалённый участник: snapshot-имя показывается как есть', () => {
