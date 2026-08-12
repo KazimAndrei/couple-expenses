@@ -5,6 +5,9 @@ const APNS_TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "";
 const APNS_PRIVATE_KEY = Deno.env.get("APNS_PRIVATE_KEY") ?? "";
 const APNS_BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID") ?? "com.kazimandrei.coupleexpenses";
 const APNS_HOST = Deno.env.get("APNS_HOST") ?? "https://api.push.apple.com";
+// Функция вызывается только триггерами БД. Без этой проверки любой в интернете мог
+// слать POST и заставлять систему рассылать пуши (и жечь вызовы функций).
+const PUSH_SECRET = Deno.env.get("PUSH_FN_SECRET") ?? "";
 
 const b64url = (data: Uint8Array | string) => {
   const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -172,6 +175,10 @@ async function maybeBudgetAlert(db: Db, expense: { couple_id: string; category_i
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+
+  if (!PUSH_SECRET || req.headers.get("x-push-secret") !== PUSH_SECRET) {
+    return new Response("unauthorized", { status: 401 });
+  }
 
   let body: { expense_id?: string; contribution_id?: string; monthly_summary_couple_id?: string; month?: string };
   try {
