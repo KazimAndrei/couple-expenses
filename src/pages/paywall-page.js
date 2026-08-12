@@ -3,7 +3,7 @@ import { escapeHtml, icon } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
-import { getOfferingPackages, getLastOfferingsError, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
+import { getOfferingPackages, getLastOfferingsError, probeProducts, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
 
 const e = escapeHtml;
 const SITE = 'https://coupleexpenses.com';
@@ -86,6 +86,8 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
       if (!pkg) {
         const detail = getLastOfferingsError();
         showToast(detail ? `${t('paywall.noProducts')}\n${detail}` : t('paywall.noProducts'));
+        // Решающая диагностика: что отвечает сам StoreKit на прямой запрос продуктов
+        probeProducts().then((msg) => showToast(msg));
         return;
       }
       busy = true; draw();

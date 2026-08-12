@@ -68,6 +68,23 @@ export async function getOfferingPackages() {
   }
 }
 
+// Диагностика: прямой запрос продуктов у StoreKit, минуя offerings
+export async function probeProducts() {
+  try {
+    await initPurchases();
+    const Purchases = await plugin();
+    const t0 = Date.now();
+    const res = await Promise.race([
+      Purchases.getProducts({ productIdentifiers: ['ce_premium_monthly', 'ce_premium_yearly'] }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8s — StoreKit не ответил')), 8000)),
+    ]);
+    const list = res?.products?.map((p) => `${p.identifier} ${p.priceString}`).join(', ') || 'ПУСТО';
+    return `SK за ${Date.now() - t0}мс: ${list}`;
+  } catch (err) {
+    return `SK ошибка: ${err?.message || err}`;
+  }
+}
+
 function hasEntitlement(customerInfo) {
   return Boolean(customerInfo?.entitlements?.active?.[ENTITLEMENT]);
 }
