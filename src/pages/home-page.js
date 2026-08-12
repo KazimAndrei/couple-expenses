@@ -142,18 +142,6 @@ async function showAddExpenseModal() {
           }).join('')}
         </div>
       </div>
-      <div class="form-group" id="split-block" style="display:${!defaultPayerId || defaultPayerId === 'shared' ? 'none' : 'block'};">
-        <label class="form-label">${t('home.splitLabel')}</label>
-        <div class="payer-options" style="flex-wrap:wrap;">
-          <div class="payer-option split-option selected" data-split="full_payer"><span id="split-payer-label">${t('home.splitFullPayer', { name: '…' })}</span></div>
-          <div class="payer-option split-option" data-split="equal"><span>${t('home.splitEqual')}</span></div>
-          <div class="payer-option split-option" data-split="custom"><span>${t('home.splitCustom')}</span></div>
-        </div>
-        <div id="split-pct-wrap" style="display:none; margin-top:8px;">
-          <label class="form-label">${t('home.splitCustomPct')}</label>
-          <input type="number" class="form-input" id="split-pct" min="1" max="99" step="1" value="70" inputmode="numeric">
-        </div>
-      </div>
       <div class="form-group">
         <label class="form-label">${t('common.date')}</label>
         <input type="date" class="form-input" id="exp-date" value="${defaultDate}">
@@ -250,31 +238,12 @@ async function showAddExpenseModal() {
       opt.classList.add('selected');
     });
   });
-  const splitBlock = document.getElementById('split-block');
-  const splitPctWrap = document.getElementById('split-pct-wrap');
-  const updateSplitBlock = () => {
-    const payerEl = backdrop.querySelector('.payer-option:not(.split-option).selected');
-    const member = payerMembers.find((m) => m.id === payerEl?.dataset.id);
-    splitBlock.style.display = member ? 'block' : 'none';
-    if (member) {
-      document.getElementById('split-payer-label').textContent = t('home.splitFullPayer', { name: memberDisplayLabel(member) });
-    }
-  };
-  backdrop.querySelectorAll('.payer-option:not(.split-option)').forEach(opt => {
+  backdrop.querySelectorAll('.payer-option').forEach(opt => {
     opt.addEventListener('click', () => {
-      backdrop.querySelectorAll('.payer-option:not(.split-option)').forEach(o => o.classList.remove('selected'));
+      backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
-      updateSplitBlock();
     });
   });
-  backdrop.querySelectorAll('.split-option').forEach(opt => {
-    opt.addEventListener('click', () => {
-      backdrop.querySelectorAll('.split-option').forEach(o => o.classList.remove('selected'));
-      opt.classList.add('selected');
-      splitPctWrap.style.display = opt.dataset.split === 'custom' ? 'block' : 'none';
-    });
-  });
-  updateSplitBlock();
 
   const receiptInput = document.getElementById('receipt-input');
   document.getElementById('btn-attach-receipt').addEventListener('click', () => receiptInput.click());
@@ -305,7 +274,7 @@ async function showAddExpenseModal() {
     const amount = parseFloat(document.getElementById('exp-amount').value);
     const description = document.getElementById('exp-desc').value.trim();
     const categoryEl = backdrop.querySelector('.cat-option.selected:not(#btn-add-category)');
-    const payerEl = backdrop.querySelector('.payer-option:not(.split-option).selected');
+    const payerEl = backdrop.querySelector('.payer-option.selected');
     const date = document.getElementById('exp-date').value;
     const recurring = document.getElementById('exp-recurring').checked;
     const goalId = goalSelect?.value || null;
@@ -314,15 +283,9 @@ async function showAddExpenseModal() {
 
     const isShared = payerEl?.dataset.id === 'shared';
     const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
-    // Деление: у «Общего» всегда пополам; у участника — выбранный вариант
-    let split = 'equal';
-    let splitPct = 50;
-    if (!isShared) {
-      split = backdrop.querySelector('.split-option.selected')?.dataset.split || 'full_payer';
-      if (split === 'custom') {
-        splitPct = Math.min(99, Math.max(1, Math.round(parseFloat(document.getElementById('split-pct').value) || 50)));
-      }
-    }
+    // Расход фиксируется за тем, кто оплатил; «Общее» — совместная трата пары
+    const split = isShared ? 'equal' : 'full_payer';
+    const splitPct = 50;
 
     // Чек грузим до создания расхода; его отсутствие — не повод терять запись
     let receiptUrl = null;

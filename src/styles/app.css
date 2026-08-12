@@ -79,7 +79,8 @@ html, body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(100px + var(--safe-bottom));
+  /* таббар + FAB (bottom 104 + высота 56) — иначе кнопка накрывает последнюю строку списка */
+  padding-bottom: calc(172px + var(--safe-bottom));
 }
 
 .page-enter { animation: pageIn 0.3s cubic-bezier(0.22,1,0.36,1) forwards; }
