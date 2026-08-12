@@ -3,7 +3,7 @@ import { escapeHtml, icon } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
-import { getOfferingPackages, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
+import { getOfferingPackages, getLastOfferingsError, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
 
 const e = escapeHtml;
 const SITE = 'https://coupleexpenses.com';
@@ -83,7 +83,11 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
       if (busy) return;
       if (!purchasesAvailable()) { showToast(t('paywall.iosOnly')); return; }
       const pkg = packages?.[selected];
-      if (!pkg) { showToast(t('paywall.noProducts')); return; }
+      if (!pkg) {
+        const detail = getLastOfferingsError();
+        showToast(detail ? `${t('paywall.noProducts')}\n${detail}` : t('paywall.noProducts'));
+        return;
+      }
       busy = true; draw();
       try {
         const ok = await purchasePackage(pkg);

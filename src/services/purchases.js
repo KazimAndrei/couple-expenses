@@ -36,19 +36,33 @@ export async function initPurchases() {
   }
 }
 
+// Последняя ошибка загрузки тарифов — для диагностики в UI
+let lastOfferingsError = null;
+export function getLastOfferingsError() {
+  return lastOfferingsError;
+}
+
 // Цены и периоды тянем из App Store через RevenueCat — не хардкодим в UI
 export async function getOfferingPackages() {
   if (!purchasesAvailable()) return null;
   await initPurchases();
   try {
     const Purchases = await plugin();
-    const { current } = await Purchases.getOfferings();
-    if (!current) return null;
+    const { current, all } = await Purchases.getOfferings();
+    if (!current) {
+      const offeringsCount = Object.keys(all || {}).length;
+      lastOfferingsError = offeringsCount === 0
+        ? 'RC: no offerings returned'
+        : 'App Store returned no products (storefront/availability?)';
+      return null;
+    }
+    lastOfferingsError = null;
     return {
       monthly: current.monthly || current.availablePackages?.find((p) => p.packageType === 'MONTHLY') || null,
       yearly: current.annual || current.availablePackages?.find((p) => p.packageType === 'ANNUAL') || null,
     };
   } catch (err) {
+    lastOfferingsError = err?.message || String(err);
     diagError('getOfferings failed', err);
     return null;
   }
