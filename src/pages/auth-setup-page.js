@@ -177,6 +177,13 @@ export function registerAuthSetupRoutes() {
         const couple = await createCouple();
         localStorage.removeItem(PENDING_INVITE_KEY);
         const link = inviteLink(couple.invite_code);
+        // Выбор уже сделан — карточки «создать / присоединиться» и поле имени убираем,
+        // иначе экран выглядит так, будто пару предлагают создать второй раз
+        document.querySelector('.setup-options')?.remove();
+        document.querySelector('.setup-page .auth-form')?.remove();
+        document.getElementById('btn-setup-logout')?.remove();
+        const subtitle = document.querySelector('.setup-sub');
+        if (subtitle) subtitle.textContent = t('setup.createdSubtitle');
         const form = document.getElementById('setup-form');
         form.style.display = 'block';
         form.innerHTML = `

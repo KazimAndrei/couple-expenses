@@ -84,3 +84,9 @@ create table if not exists public.rc_webhook_events (
 alter table public.rc_webhook_events enable row level security;
 revoke all on table public.rc_webhook_events from anon, authenticated;
 create index if not exists rc_webhook_events_received_idx on public.rc_webhook_events(received_at desc);
+
+-- owner_id стал NOT NULL и первичным ключом, поэтому ON DELETE SET NULL ломал удаление аккаунта
+alter table public.subscriptions drop constraint if exists subscriptions_owner_id_fkey;
+alter table public.subscriptions
+  add constraint subscriptions_owner_id_fkey
+  foreign key (owner_id) references public.profiles(id) on delete cascade;
