@@ -57,8 +57,10 @@ export function diagStep(message) {
 }
 
 export function diagError(message, err) {
-  if (!enabled) return;
   const detail = err?.message || String(err || 'unknown');
+  // Ошибки всегда в консоль (видны в Xcode/Capacitor логах); панель — только в dev
+  console.error(`[diag] ${message}:`, detail);
+  if (!enabled) return;
   pushEntry('ERROR', `${message} -> ${detail}`);
   renderPanel(true);
 }

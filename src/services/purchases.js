@@ -25,6 +25,9 @@ export async function initPurchases() {
   if (!user) return;
   try {
     const Purchases = await plugin();
+    if (import.meta.env.VITE_RC_DEBUG === '1') {
+      await Purchases.setLogLevel({ level: 'DEBUG' }).catch(() => {});
+    }
     await Purchases.configure({ apiKey: API_KEY, appUserID: user.id });
     configured = true;
     diagStep('purchases: configured');

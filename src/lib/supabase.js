@@ -99,7 +99,7 @@ export async function getProfile() {
   if (!user) return null;
   const { data, error } = await supabase
     .from('profiles')
-    .select('*, couples(*)')
+    .select('*, couples!profiles_couple_id_fkey(*)')
     .eq('id', user.id)
     .maybeSingle();
   if (error) {
