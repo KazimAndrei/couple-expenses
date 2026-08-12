@@ -3,6 +3,7 @@ import { getState, setState } from '../lib/store.js';
 import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
+import { coupleHasAccess } from '../services/purchases.js';
 import { clearQueue } from '../services/offline-queue.js';
 import { Capacitor } from '@capacitor/core';
 import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
@@ -209,6 +210,7 @@ export function registerProfileRoute() {
             </div>
             <div><div class="profile-name">${e(state.profile.display_name)}</div><div class="profile-email">${state.couple ? t('profile.keyLabel', { code: e(state.couple.invite_code) }) : ''}</div></div>
           </div>
+          ${state.couple ? `<div class="profile-menu-item" id="sub-status" style="display:none;"></div>` : ''}
           <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>${t('profile.editName')}</span></div>
           <div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>${t('profile.removePhoto')}</span></div>
           ${state.couple ? `
@@ -231,6 +233,39 @@ export function registerProfileRoute() {
       </div>
       ${renderTabBar()}
     `;
+    // Статус подписки: серверная правда через couple_access(), одинаково для владельца и партнёра
+    if (state.couple) {
+      coupleHasAccess().then((acc) => {
+        const el = document.getElementById('sub-status');
+        if (!el || !acc?.status) return;
+        const lang = getLang() === 'ru' ? 'ru-RU' : 'en-US';
+        const untilDate = acc.expires_at
+          ? new Date(acc.expires_at).toLocaleDateString(lang, { day: 'numeric', month: 'short' })
+          : null;
+        let title = '';
+        let detail = '';
+        if (acc.status === 'grace') {
+          title = t('profile.subGrace');
+        } else if (!acc.has_access) {
+          title = t('profile.subExpired');
+        } else if (acc.is_trial) {
+          title = t('profile.subTrial');
+          const daysLeft = acc.expires_at
+            ? Math.max(0, Math.ceil((new Date(acc.expires_at) - Date.now()) / 86400000))
+            : null;
+          if (daysLeft !== null) detail = t('profile.subTrialLeft', { days: daysLeft });
+        } else {
+          title = t('profile.subPremium');
+          if (untilDate) detail = t(acc.will_renew ? 'profile.subRenews' : 'profile.subUntil', { date: untilDate });
+        }
+        if (acc.has_access && acc.is_owner === false) {
+          detail = detail ? `${detail} · ${t('profile.subPaidByPartner')}` : t('profile.subPaidByPartner');
+        }
+        el.innerHTML = `${icon('star', 20)}<span>${e(title)}${detail ? ` <strong>${e(detail)}</strong>` : ''}</span>`;
+        el.style.display = '';
+      }).catch(() => { /* нет данных — строку не показываем */ });
+    }
+
     document.getElementById('btn-change-avatar')?.addEventListener('click', () => {
       document.getElementById('avatar-input')?.click();
     });
