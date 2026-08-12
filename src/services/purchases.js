@@ -47,7 +47,7 @@ function currentUserId() {
 export async function initPurchases() {
   if (!purchasesAvailable() || configured) return;
   const userId = currentUserId();
-  if (!userId) { diagError('purchases init', new Error('нет пользователя')); return; }
+  if (!userId) { diagError('purchases init', new Error('no user id')); return; }
   try {
     await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 6000);
     configured = true;

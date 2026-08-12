@@ -2,7 +2,7 @@ import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
 import { currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, pct, prevMonth, safeColor } from '../lib/utils.js';
-import { t } from '../lib/i18n.js';
+import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -116,7 +116,7 @@ export function registerAnalyticsRoute() {
       const categoryId = expense.category_id || 'other';
       const existing = catMap.get(categoryId) || {
         category_id: categoryId,
-        category_name: expense.categories?.name || t('common.other'),
+        category_name: categoryLabel(expense.categories?.name) || t('common.other'),
         category_color: expense.categories?.color || '#888780',
         total: 0,
       };
@@ -199,7 +199,7 @@ export function registerAnalyticsRoute() {
             return `
               <div class="budget-card" data-budget-id="${b.id}">
                 <div class="budget-header">
-                  <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(b.categories?.name || t('analytics.categoryFallback'))}</div>
+                  <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(categoryLabel(b.categories?.name) || t('analytics.categoryFallback'))}</div>
                   <div class="budget-amounts">${formatMoney(spent)} / ${formatMoney(b.limit_amount)}</div>
                 </div>
                 <div class="budget-track"><div class="budget-fill ${fillClass}" style="width: ${Math.min(percentage, 100)}%; background: ${!fillClass ? safeColor(b.categories?.color || '#1d9e75') : ''};"></div></div>

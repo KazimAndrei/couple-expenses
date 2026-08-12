@@ -93,6 +93,11 @@ const ru = {
   'setup.joining': 'Входим...',
   'setup.joined': 'Вы присоединились!',
   'setup.shareText': 'Присоединяйся к нашей паре в CoupleExpenses',
+  'setup.coupleFull': 'В этой паре уже два участника',
+  'setup.codeNotFound': 'Код не найден',
+  'setup.joinFailed': 'Не удалось присоединиться: {msg}',
+  'home.incomeLoadFailed': 'Не удалось загрузить доход: {msg}',
+
 
   // Invite (profile share)
   'invite.shareText': 'Присоединяйся к нашей паре',
@@ -370,6 +375,11 @@ const en = {
   'setup.joining': 'Joining...',
   'setup.joined': 'You have joined!',
   'setup.shareText': 'Join our couple in CoupleExpenses',
+  'setup.coupleFull': 'This couple already has two members',
+  'setup.codeNotFound': 'Code not found',
+  'setup.joinFailed': 'Could not join: {msg}',
+  'home.incomeLoadFailed': 'Could not load income: {msg}',
+
 
   // Invite (profile share)
   'invite.shareText': 'Join our couple',
@@ -574,6 +584,36 @@ const DAYS_SHORT = {
 };
 
 // Приложение для рынка США: по умолчанию английский, русский — только по явному выбору
+
+// Дефолтные категории живут в БД (их сеет create_couple), поэтому переводим их по названию.
+// Пользовательские категории показываем как есть — их придумал сам пользователь.
+const DEFAULT_CATEGORIES = {
+  'Продукты': { ru: 'Продукты', en: 'Groceries' },
+  'Groceries': { ru: 'Продукты', en: 'Groceries' },
+  'Рестораны': { ru: 'Рестораны', en: 'Restaurants' },
+  'Restaurants': { ru: 'Рестораны', en: 'Restaurants' },
+  'Жильё': { ru: 'Жильё', en: 'Housing' },
+  'Housing': { ru: 'Жильё', en: 'Housing' },
+  'Транспорт': { ru: 'Транспорт', en: 'Transport' },
+  'Transport': { ru: 'Транспорт', en: 'Transport' },
+  'Здоровье': { ru: 'Здоровье', en: 'Health' },
+  'Health': { ru: 'Здоровье', en: 'Health' },
+  'Развлечения': { ru: 'Развлечения', en: 'Entertainment' },
+  'Entertainment': { ru: 'Развлечения', en: 'Entertainment' },
+  'Одежда': { ru: 'Одежда', en: 'Clothing' },
+  'Clothing': { ru: 'Одежда', en: 'Clothing' },
+  'Подписки': { ru: 'Подписки', en: 'Subscriptions' },
+  'Subscriptions': { ru: 'Подписки', en: 'Subscriptions' },
+  'Другое': { ru: 'Другое', en: 'Other' },
+  'Other': { ru: 'Другое', en: 'Other' },
+};
+
+export function categoryLabel(name) {
+  if (!name) return '';
+  const known = DEFAULT_CATEGORIES[name.trim()];
+  return known ? known[getLang()] || name : name;
+}
+
 export function getLang() {
   try {
     return localStorage.getItem(LANG_KEY) === 'ru' ? 'ru' : 'en';

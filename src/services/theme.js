@@ -2,7 +2,6 @@ import { Capacitor } from '@capacitor/core';
 
 const THEME_KEY = 'ce_theme'; // 'system' | 'light' | 'dark'
 
-export const THEME_LABELS = { system: 'Как в системе', light: 'Светлая', dark: 'Тёмная' };
 
 export function getThemePref() {
   const v = localStorage.getItem(THEME_KEY);

@@ -3,7 +3,7 @@ import { getState, setState } from '../lib/store.js';
 import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
-import { t } from '../lib/i18n.js';
+import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { loadAll, loadExpenses } from '../services/data-loader.js';
@@ -106,7 +106,7 @@ async function showAddExpenseModal() {
               <div class="cat-dot" style="background: ${safeColor(c.color)}20">
                 ${icon(c.icon, 16, safeColor(c.color))}
               </div>
-              ${e(c.name)}
+              ${e(categoryLabel(c.name))}
             </div>
           `).join('')}
           <div class="cat-option cat-option-add" id="btn-add-category">
@@ -416,7 +416,7 @@ function showHomeFiltersModal() {
         <label class="form-label">${t('common.category')}</label>
         <select class="form-input" id="filter-category">
           <option value="">${t('home.allCategories')}</option>
-          ${categories.map(c => `<option value="${c.id}" ${categoryFilter === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}
+          ${categories.map(c => `<option value="${c.id}" ${categoryFilter === c.id ? 'selected' : ''}>${e(categoryLabel(c.name))}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -491,7 +491,7 @@ function showExpenseActionsModal(expense, app) {
         <div class="form-group"><label class="form-label">${t('common.amount')}</label><input type="number" class="form-input" id="edit-amount" value="${expense.amount}"></div>
         <div class="form-group"><label class="form-label">${t('home.description')}</label><input type="text" class="form-input" id="edit-desc" value="${e(expense.description)}"></div>
         <div class="form-group"><label class="form-label">${t('common.category')}</label>
-          <select class="form-input" id="edit-category">${categories.map(c => `<option value="${c.id}" ${expense.category_id === c.id ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>
+          <select class="form-input" id="edit-category">${categories.map(c => `<option value="${c.id}" ${expense.category_id === c.id ? 'selected' : ''}>${e(categoryLabel(c.name))}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label class="form-label">${t('home.whoPays')}</label>
           <select class="form-input" id="edit-paid-by">
@@ -759,7 +759,7 @@ function renderHome(app) {
                   <div class="tx-icon" style="background: ${bgColor}">${icon(cat?.icon || 'more-horizontal', 18, catColor)}</div>
                   <div class="tx-info">
                     <div class="tx-name">${e(exp.description)}${exp.receipt_url ? ' 📎' : ''}</div>
-                    <div class="tx-cat">${e(cat?.name || t('common.other'))}</div>
+                    <div class="tx-cat">${e(categoryLabel(cat?.name) || t('common.other'))}</div>
                     ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
                   </div>
                   <div><div class="tx-amount negative">-${formatMoney(exp.amount, exp.currency)}</div><div class="tx-who">${e(payerName)}</div></div>

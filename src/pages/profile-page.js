@@ -15,7 +15,7 @@ import { enableModalSwipe } from '../components/modal-swipe.js';
 
 const e = escapeHtml;
 
-// Подписи темы в UI берём из словаря (THEME_LABELS в services/theme.js не трогаем)
+// Подписи темы берём из словаря
 const themeLabel = (pref) => t(`theme.${pref}`);
 
 async function fileToBlob(file) {

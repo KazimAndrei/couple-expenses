@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
+import { t } from './i18n.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
@@ -150,14 +151,14 @@ export async function createCouple(name = 'Our Budget', currency) {
 export async function joinCouple(inviteCode, displayName) {
   const { data: couple, error } = await supabase.rpc('join_couple_by_invite', {
     p_invite_code: inviteCode.trim(),
-    p_display_name: displayName || 'Пользователь',
+    p_display_name: displayName || t('common.member'),
   });
   if (error) {
-    if (error.message?.includes('couple is full')) throw new Error('В этой паре уже два участника');
-    if (error.message?.includes('invite code not found')) throw new Error('Код не найден');
-    throw new Error('Не удалось присоединиться: ' + error.message);
+    if (error.message?.includes('couple is full')) throw new Error(t('setup.coupleFull'));
+    if (error.message?.includes('invite code not found')) throw new Error(t('setup.codeNotFound'));
+    throw new Error(t('setup.joinFailed', { msg: error.message }));
   }
-  if (!couple) throw new Error('Код не найден');
+  if (!couple) throw new Error(t('setup.codeNotFound'));
   return couple;
 }
 
@@ -335,7 +336,7 @@ export async function getIncome(coupleId, month) {
   if (error) {
     console.error('getIncome error:', error);
     if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-      window.showToast('Не удалось загрузить доход: ' + (error.message || 'unknown'));
+      window.showToast(t('home.incomeLoadFailed', { msg: error.message || 'unknown' }));
     }
     return 0;
   }
