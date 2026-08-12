@@ -175,3 +175,14 @@ initDiagnostics();
 exposeToastGlobally();
 setupOfflineBanner();
 init();
+
+// Разовая проверка канала до StoreKit (VITE_RC_DEBUG=1) — пишет результат в консоль устройства
+if (import.meta.env.VITE_RC_DEBUG === '1') {
+  import('./services/purchases.js').then(async (m) => {
+    const { Capacitor } = await import('@capacitor/core');
+    console.error('[rc] available:', m.purchasesAvailable(),
+      '| нативный плагин:', Capacitor.isPluginAvailable('Purchases'),
+      '| платформа:', Capacitor.getPlatform());
+    console.error('[rc] probe:', await m.probeProducts());
+  }).catch((err) => console.error('[rc] module failed:', err?.message || err));
+}

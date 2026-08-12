@@ -120,7 +120,16 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   draw();
   // Цены из стора приходят асинхронно — перерисовываем, когда получим
   getOfferingPackages().then((pkgs) => {
-    if (pkgs) { packages = pkgs; draw(); }
+    if (pkgs) { packages = pkgs; draw(); return; }
+    // Диагностика видна на экране: тост исчезает раньше, чем его успеваешь прочитать
+    if (import.meta.env.VITE_RC_DEBUG === '1') {
+      probeProducts().then((msg) => {
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;padding:8px;border-radius:8px;background:#111;color:#0f0;font:11px/1.4 ui-monospace,monospace;white-space:pre-wrap';
+        box.textContent = `offerings: ${getLastOfferingsError() || 'null'}\n${msg}`;
+        document.body.appendChild(box);
+      });
+    }
   });
 }
 

@@ -1,6 +1,6 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
-import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signInAsGuest, updateDisplayName, inviteLink, GUEST_ENABLED } from '../lib/supabase.js';
+import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signInAsGuest, signOut, updateDisplayName, inviteLink, GUEST_ENABLED } from '../lib/supabase.js';
 import { CURRENCIES, currencyName, currentMonth, escapeHtml, icon } from '../lib/utils.js';
 import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
@@ -148,10 +148,21 @@ export function registerAuthSetupRoutes() {
           ${pendingCode ? `<div class="setup-card" id="btn-create"><h3>${t('setup.createOwnTitle')}</h3><p>${t('setup.createOwnText')}</p></div>` : ''}
         </div>
         <div id="setup-form" style="max-width: 320px; margin: 24px auto 0; display: none;"></div>
+        <button class="paywall-link" id="btn-setup-logout" style="margin: 28px auto 0; display: block; background: none; border: none; color: var(--c-text-secondary); text-decoration: underline; font-size: 14px;">${t('profile.logout')}</button>
       </div>
     `;
 
     const readName = () => document.getElementById('setup-name').value.trim();
+
+    // Выход прямо с экрана настройки: иначе гость без пары заперт на нём
+    document.getElementById('btn-setup-logout').onclick = async () => {
+      try {
+        await signOut();
+        localStorage.removeItem(PENDING_INVITE_KEY);
+        sessionStorage.removeItem('ce_paywall_skip');
+      } catch { /* сессия уже недействительна — всё равно уходим на вход */ }
+      navigate('/auth');
+    };
 
     document.getElementById('btn-create').onclick = async () => {
       const btnCreate = document.getElementById('btn-create');

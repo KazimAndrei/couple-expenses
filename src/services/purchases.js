@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { Purchases } from '@revenuecat/purchases-capacitor';
 import { supabase } from '../lib/supabase.js';
 import { diagError, diagStep } from './diagnostics.js';
 // diagStep/diagError пишут только в dev-сборках — в релиз ничего не попадает
@@ -10,8 +11,9 @@ export const ENTITLEMENT = 'premium';
 
 let configured = false;
 
+// Статический импорт: динамический чанк в Capacitor WebView мог не догрузиться,
+// и тогда любой вызов к покупкам висел вечно вместо ошибки.
 async function plugin() {
-  const { Purchases } = await import('@revenuecat/purchases-capacitor');
   return Purchases;
 }
 
@@ -19,20 +21,33 @@ export function purchasesAvailable() {
   return Capacitor.isNativePlatform() && Boolean(API_KEY);
 }
 
+// Любой вызов через мост Capacitor может не вернуть ответ — тогда UI висит навсегда.
+// Всё, что уходит в нативный плагин, оборачиваем в таймаут.
+const DEBUG = import.meta.env.VITE_RC_DEBUG === '1';
+function withTimeout(label, promise, ms = 8000) {
+  if (DEBUG) console.error(`[rc] → ${label}`);
+  return Promise.race([
+    Promise.resolve(promise).then((v) => { if (DEBUG) console.error(`[rc] ← ${label} ok`); return v; }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label}: нет ответа ${ms / 1000}с`)), ms)),
+  ]);
+}
+
 export async function initPurchases() {
   if (!purchasesAvailable() || configured) return;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  const { data } = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise((resolve) => setTimeout(() => resolve({ data: {} }), 4000)),
+  ]);
+  const user = data?.user || (await supabase.auth.getSession()).data?.session?.user;
+  if (!user) { diagError('purchases init', new Error('нет пользователя')); return; }
   try {
     const Purchases = await plugin();
-    if (import.meta.env.VITE_RC_DEBUG === '1') {
-      await Purchases.setLogLevel({ level: 'DEBUG' }).catch(() => {});
-    }
-    await Purchases.configure({ apiKey: API_KEY, appUserID: user.id });
+    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: user.id }), 8000);
     configured = true;
     diagStep('purchases: configured');
   } catch (err) {
     diagError('purchases init failed', err);
+    throw err;
   }
 }
 
@@ -48,7 +63,8 @@ export async function getOfferingPackages() {
   await initPurchases();
   try {
     const Purchases = await plugin();
-    const { current, all } = await Purchases.getOfferings();
+    // Стор иногда не отвечает вовсе — без таймаута пейволл навсегда остался бы с фолбэк-ценами
+    const { current, all } = await withTimeout('getOfferings', Purchases.getOfferings(), 10000);
     if (!current) {
       const offeringsCount = Object.keys(all || {}).length;
       lastOfferingsError = offeringsCount === 0
@@ -74,10 +90,8 @@ export async function probeProducts() {
     await initPurchases();
     const Purchases = await plugin();
     const t0 = Date.now();
-    const res = await Promise.race([
-      Purchases.getProducts({ productIdentifiers: ['ce_premium_monthly', 'ce_premium_yearly'] }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8s — StoreKit не ответил')), 8000)),
-    ]);
+    const res = await withTimeout('getProducts',
+      Purchases.getProducts({ productIdentifiers: ['ce_premium_monthly', 'ce_premium_yearly'] }), 8000);
     const list = res?.products?.map((p) => `${p.identifier} ${p.priceString}`).join(', ') || 'ПУСТО';
     return `SK за ${Date.now() - t0}мс: ${list}`;
   } catch (err) {
@@ -108,7 +122,7 @@ export async function isPremiumActive({ timeoutMs = 5000 } = {}) {
   const check = (async () => {
     await initPurchases();
     const Purchases = await plugin();
-    const { customerInfo } = await Purchases.getCustomerInfo();
+    const { customerInfo } = await withTimeout('getCustomerInfo', Purchases.getCustomerInfo(), 6000);
     return hasEntitlement(customerInfo);
   })();
   try {
