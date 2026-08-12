@@ -12,6 +12,7 @@ import { loadExpenses } from './services/data-loader.js';
 import { showToast } from './services/toast.js';
 import { exposeToastGlobally } from './services/toast.js';
 import { diagError, diagStep, initDiagnostics } from './services/diagnostics.js';
+import { clearSessionState } from './services/session-cleanup.js';
 import { t } from './lib/i18n.js';
 import { registerAuthSetupRoutes } from './pages/auth-setup-page.js';
 import { registerHomeRoute } from './pages/home-page.js';
@@ -112,6 +113,8 @@ async function init() {
   supabase.auth.onAuthStateChange((event) => {
     diagStep(`auth change: ${event}`);
     if (event === 'SIGNED_OUT') {
+      // Единая точка очистки: сюда попадаем и по кнопке выхода, и когда протух токен
+      clearSessionState().catch(() => {});
       setState({ user: null, profile: null, couple: null, loading: false });
       navigate('/auth');
     }

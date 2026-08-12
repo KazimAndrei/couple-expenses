@@ -4,7 +4,7 @@ import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfil
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
 import { coupleHasAccess } from '../services/purchases.js';
-import { clearQueue } from '../services/offline-queue.js';
+import { clearSessionState } from '../services/session-cleanup.js';
 import { Capacitor } from '@capacitor/core';
 import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
 import { LANG_LABELS, getLang, setLang, t } from '../lib/i18n.js';
@@ -479,9 +479,12 @@ export function registerProfileRoute() {
       };
     });
     document.getElementById('btn-logout').onclick = async () => {
-      await signOut();
-      localStorage.removeItem('ce_data_cache_v1');
-      clearQueue();
+      const btn = document.getElementById('btn-logout');
+      btn.style.opacity = '0.6';
+      // signOut бросает при протухшем токене или без сети — выйти всё равно нужно,
+      // иначе кнопка выглядела мёртвой и пользователь оставался запертым в аккаунте
+      try { await signOut(); } catch { /* локальную сессию всё равно чистим */ }
+      await clearSessionState().catch(() => {});
       setState({ user: null, profile: null, couple: null });
       navigate('/auth');
     };

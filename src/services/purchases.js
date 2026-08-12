@@ -10,7 +10,7 @@ import { diagError, diagStep } from './diagnostics.js';
 const API_KEY = import.meta.env.VITE_REVENUECAT_IOS_KEY;
 export const ENTITLEMENT = 'premium';
 
-let configured = false;
+let configuredUserId = null;
 let initError = null;
 
 // ВАЖНО: Purchases — это Proxy Capacitor, у которого ЛЮБОЕ свойство (включая `then`)
@@ -45,12 +45,19 @@ function currentUserId() {
 }
 
 export async function initPurchases() {
-  if (!purchasesAvailable() || configured) return;
+  if (!purchasesAvailable()) return;
   const userId = currentUserId();
   if (!userId) { diagError('purchases init', new Error('no user id')); return; }
+  // Сравниваем с тем, под кем SDK сконфигурирован: раньше флаг был булевым и после
+  // смены пользователя покупка уходила на предыдущий аккаунт.
+  if (configuredUserId === userId) return;
   try {
-    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 6000);
-    configured = true;
+    if (configuredUserId) {
+      await withTimeout('logIn', Purchases.logIn({ appUserID: userId }), 6000);
+    } else {
+      await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 6000);
+    }
+    configuredUserId = userId;
     diagStep('purchases: configured');
   } catch (err) {
     // Не бросаем: вызывающие ждут обычного продолжения, а отклонённый промис
@@ -98,13 +105,28 @@ function hasEntitlement(customerInfo) {
 }
 
 export async function purchasePackage(pkg) {
-  const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
+  // Покупка долгая (окно Apple), но не бесконечная: без потолка зависший мост
+  // навсегда блокировал кнопку оплаты
+  const { customerInfo } = await withTimeout('purchase', Purchases.purchasePackage({ aPackage: pkg }), 180000);
   return hasEntitlement(customerInfo);
 }
 
 export async function restorePurchases() {
-  const { customerInfo } = await Purchases.restorePurchases();
+  const { customerInfo } = await withTimeout('restore', Purchases.restorePurchases(), 30000);
   return hasEntitlement(customerInfo);
+}
+
+// При выходе отвязываем покупателя, иначе следующий пользователь этого телефона
+// покупал бы под чужим идентификатором
+export async function logOutPurchases() {
+  if (!purchasesAvailable() || !configuredUserId) return;
+  try {
+    await withTimeout('logOut', Purchases.logOut(), 6000);
+  } catch (err) {
+    diagError('purchases logout failed', err);
+  } finally {
+    configuredUserId = null;
+  }
 }
 
 // Активен ли премиум по данным стора (источник истины для UI до прихода вебхука).

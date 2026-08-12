@@ -20,6 +20,10 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   let selected = 'yearly';
   let packages = null;
   let busy = false;
+  // Экран закрыт: после этого ни один отложенный ответ (цены, покупка) не имеет права
+  // перерисовать пейволл поверх того, что уже открыл пользователь
+  let disposed = false;
+  const dispose = () => { disposed = true; };
 
   const priceOf = (key) => {
     const pkg = packages?.[key];
@@ -35,6 +39,7 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   };
 
   const draw = () => {
+    if (disposed) return;
     app.innerHTML = `
       <div class="paywall page-enter">
         <button class="paywall-close" id="pw-close" aria-label="${t('common.cancel')}">${icon('x', 20)}</button>
@@ -77,7 +82,7 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
     app.querySelectorAll('[data-plan]').forEach((el) => {
       el.addEventListener('click', () => { selected = el.dataset.plan; draw(); });
     });
-    document.getElementById('pw-close').onclick = () => (onClose ? onClose() : navigate('/setup'));
+    document.getElementById('pw-close').onclick = () => { dispose(); return onClose ? onClose() : navigate('/setup'); };
 
     document.getElementById('pw-buy').onclick = async () => {
       if (busy) return;
@@ -91,7 +96,7 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
       busy = true; draw();
       try {
         const ok = await purchasePackage(pkg);
-        if (ok) { showToast(t('paywall.purchased')); onSuccess?.(); return; }
+        if (ok) { dispose(); showToast(t('paywall.purchased')); onSuccess?.(); return; }
         showToast(t('paywall.notActive'));
       } catch (err) {
         // Отмена покупки пользователем — не ошибка
@@ -104,13 +109,17 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
     };
 
     document.getElementById('pw-restore').onclick = async () => {
+      if (busy) return;
       if (!purchasesAvailable()) { showToast(t('paywall.iosOnly')); return; }
+      busy = true; draw();
       try {
         const ok = await restorePurchases();
-        if (ok) { showToast(t('paywall.restored')); onSuccess?.(); }
-        else showToast(t('paywall.nothingToRestore'));
+        if (ok) { dispose(); showToast(t('paywall.restored')); onSuccess?.(); return; }
+        showToast(t('paywall.nothingToRestore'));
       } catch (err) {
         showToast(t('common.error', { msg: getReadableError(err) }));
+      } finally {
+        busy = false; draw();
       }
     };
   };

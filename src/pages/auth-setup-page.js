@@ -8,6 +8,7 @@ import { getReadableError } from '../services/errors.js';
 import { initNativePush } from '../services/native-push.js';
 import { isPremiumActive, purchasesAvailable } from '../services/purchases.js';
 import { renderPaywall } from './paywall-page.js';
+import { clearSessionState } from '../services/session-cleanup.js';
 
 const e = escapeHtml;
 const PENDING_INVITE_KEY = 'ce_pending_invite';
@@ -160,12 +161,8 @@ export function registerAuthSetupRoutes() {
 
     // Выход прямо с экрана настройки: иначе гость без пары заперт на нём
     document.getElementById('btn-setup-logout').onclick = async () => {
-      try {
-        await signOut();
-        localStorage.removeItem(PENDING_INVITE_KEY);
-        sessionStorage.removeItem('ce_paywall_skip');
-        sessionStorage.removeItem('ce_setup_name');
-      } catch { /* сессия уже недействительна — всё равно уходим на вход */ }
+      try { await signOut(); } catch { /* сессия уже недействительна — всё равно уходим */ }
+      await clearSessionState().catch(() => {});
       navigate('/auth');
     };
 
@@ -185,12 +182,19 @@ export function registerAuthSetupRoutes() {
         const link = inviteLink(couple.invite_code);
         // Выбор уже сделан — карточки «создать / присоединиться» и поле имени убираем,
         // иначе экран выглядит так, будто пару предлагают создать второй раз
+        const form = document.getElementById('setup-form');
+        // Пару могли создать поверх пейволла (сразу после оплаты) — экрана настройки в DOM нет.
+        // Тогда просто заходим в приложение: ссылка-приглашение доступна в профиле.
+        if (!form) {
+          showToast(t('setup.createdSubtitle'));
+          await enterApp(couple);
+          return;
+        }
         document.querySelector('.setup-options')?.remove();
         document.querySelector('.setup-page .auth-form')?.remove();
         document.getElementById('btn-setup-logout')?.remove();
         const subtitle = document.querySelector('.setup-sub');
         if (subtitle) subtitle.textContent = t('setup.createdSubtitle');
-        const form = document.getElementById('setup-form');
         form.style.display = 'block';
         form.innerHTML = `
           <p style="font-size: 14px; color: var(--c-text-secondary); margin-bottom: 8px;">${t('setup.sendPartnerLink')}</p>
@@ -220,21 +224,37 @@ export function registerAuthSetupRoutes() {
     // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
     // Пейволл открываем синхронно: любой await до отрисовки может подвесить кнопку.
     const PAID_KEY = 'ce_paywall_skip';
+    let creating = false; // guard живёт в замыкании: DOM-кнопки может не быть (поверх открыт пейволл)
     document.getElementById('btn-create').onclick = async () => {
+      if (creating) return;
       const name = readName();
       if (!name) { showToast(t('common.enterName')); return; }
 
-      const alreadyPaid = sessionStorage.getItem(PAID_KEY) === '1';
-      if (!purchasesAvailable() || alreadyPaid) { await doCreateCouple(name); return; }
+      if (!purchasesAvailable() || sessionStorage.getItem(PAID_KEY) === '1') {
+        creating = true;
+        try { await doCreateCouple(name); } finally { creating = false; }
+        return;
+      }
+
+      // Подписка могла быть куплена раньше (переустановка, выход из пары) — тогда пейволл не нужен
+      const alreadyPremium = await isPremiumActive().catch(() => false);
+      if (alreadyPremium) {
+        sessionStorage.setItem(PAID_KEY, '1');
+        creating = true;
+        try { await doCreateCouple(name); } finally { creating = false; }
+        return;
+      }
 
       const isGuest = session?.user?.is_anonymous === true;
       updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
       renderPaywall(app, {
-        // После оплаты не гоняем юзера по кругу — сразу создаём пару
-        onSuccess: () => {
+        // Создаём пару прямо здесь: navigate + setTimeout запускали две параллельные
+        // цепочки, из-за чего появлялась вторая пара или пропадала инвайт-ссылка
+        onSuccess: async () => {
           sessionStorage.setItem(PAID_KEY, '1');
-          navigate('/setup');
-          setTimeout(() => doCreateCouple(name), 0);
+          if (creating) return;
+          creating = true;
+          try { await doCreateCouple(name); } finally { creating = false; }
         },
         onClose: () => {
           if (isGuest) {
