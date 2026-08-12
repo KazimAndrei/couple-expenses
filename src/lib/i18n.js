@@ -198,6 +198,7 @@ const ru = {
   'goals.toppedUp': 'Пополнено',
   'goals.updated': 'Цель обновлена',
   'goals.deletedToast': 'Цель удалена',
+  'goals.confirmDelete': 'Удалить цель «{name}» вместе со всеми пополнениями?',
 
   // Profile
   'profile.title': 'Профиль',
@@ -480,6 +481,7 @@ const en = {
   'goals.toppedUp': 'Topped up',
   'goals.updated': 'Goal updated',
   'goals.deletedToast': 'Goal deleted',
+  'goals.confirmDelete': 'Delete the goal “{name}” along with all its contributions?',
 
   // Profile
   'profile.title': 'Profile',

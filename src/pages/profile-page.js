@@ -7,7 +7,7 @@ import { coupleHasAccess } from '../services/purchases.js';
 import { clearSessionState } from '../services/session-cleanup.js';
 import { Capacitor } from '@capacitor/core';
 import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
-import { LANG_LABELS, getLang, setLang, t } from '../lib/i18n.js';
+import { LANG_LABELS, categoryLabel, getLang, setLang, t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -421,11 +421,17 @@ export function registerProfileRoute() {
       try {
         const rows = await fetchAllExpensesForExport(state.couple.id);
         const header = ['date', 'description', 'category', 'goal', 'amount', 'currency', 'split', 'paid_by'];
-        const csvEscape = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+        // Значение, начинающееся с = + - @, Excel исполнит как формулу; описание вводит
+        // партнёр, поэтому такие строки предваряем апострофом
+        const csvEscape = (v) => {
+          const raw = String(v ?? '');
+          const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+          return `"${safe.replaceAll('"', '""')}"`;
+        };
         const csv = [header.join(',')].concat(rows.map((r) => [
           r.expense_date,
           r.description,
-          r.categories?.name || '',
+          categoryLabel(r.categories?.name) || '',
           r.goal_contributions?.[0]?.goals?.name || '',
           r.amount,
           r.currency,

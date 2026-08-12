@@ -90,19 +90,33 @@ function showGoalActionsModal(goalId) {
     document.body.appendChild(editBackdrop);
     enableModalSwipe(editBackdrop);
     document.getElementById('btn-save-goal-edit').onclick = async () => {
+      const btn = document.getElementById('btn-save-goal-edit');
+      if (btn.disabled) return;
+      // Без этих проверок пустая сумма улетала как null и пользователь видел сырую
+      // ошибку Postgres про not-null constraint
+      const editName = document.getElementById('edit-goal-name').value.trim();
+      const editTarget = parseFloat(document.getElementById('edit-goal-target').value);
+      if (!editName) { showToast(t('common.enterTitle')); return; }
+      if (!Number.isFinite(editTarget) || editTarget <= 0) { showToast(t('common.enterAmount')); return; }
+      btn.disabled = true;
       try {
         await updateGoal(goal.id, {
-          name: document.getElementById('edit-goal-name').value.trim(),
-          target_amount: parseFloat(document.getElementById('edit-goal-target').value),
+          name: editName,
+          target_amount: editTarget,
           deadline: document.getElementById('edit-goal-deadline').value || null,
         });
         editBackdrop.remove();
         showToast(t('goals.updated'));
         navigate('/goals');
-      } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
+      } catch (err) {
+        showToast(t('common.error', { msg: getReadableError(err) }));
+        btn.disabled = false;
+      }
     };
   };
   document.getElementById('btn-delete-goal').onclick = async () => {
+    // Удаление цели каскадом сносит все пополнения и необратимо — спрашиваем
+    if (!window.confirm(t('goals.confirmDelete', { name: goal.name }))) return;
     try {
       await deleteGoal(goal.id);
       backdrop.remove();

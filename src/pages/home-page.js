@@ -342,8 +342,17 @@ async function showAddExpenseModal() {
       }
     } catch (err) {
       if (!goalId && isNetworkError(err)) {
-        // Нет сети: кладём в очередь, отправится при появлении соединения
+        // Нет сети: кладём в очередь, отправится при появлении соединения.
+        // Сразу показываем расход в списке — иначе выглядело так, будто запись пропала,
+        // и пользователь вводил её повторно.
         enqueueExpense(expensePayload);
+        const pending = {
+          ...expensePayload,
+          id: `pending-${crypto.randomUUID()}`,
+          categories: categories.find((c) => c.id === expensePayload.category_id) || null,
+          profiles: { display_name: memberDisplayLabel(members.find((m) => m.id === paidById)) },
+        };
+        setState({ expenses: [pending, ...(getState().expenses || [])] });
         backdrop.remove();
         showToast(t('home.savedOffline'));
         return;
@@ -698,9 +707,7 @@ function renderHome(app) {
     <div class="page-enter">
       <div class="header">
         <div><div class="header-title">${t('home.title')}</div></div>
-        <button class="header-action" onclick="document.getElementById('add-exp-btn').click()">
-          ${icon('bell', 20)}
-        </button>
+        
       </div>
       <div class="month-nav">
         <button id="prev-month">${icon('chevron-left', 18)}</button>

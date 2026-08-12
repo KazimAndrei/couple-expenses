@@ -378,14 +378,23 @@ export async function deleteIncomeEntry(id) {
 }
 
 // ---- Export ----
+// Экспорт постранично: PostgREST режет выдачу на 1000 строк, и у пары с историей
+// за год файл молча получался неполным
 export async function fetchAllExpensesForExport(coupleId) {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('expense_date, description, amount, currency, split, paid_by_snapshot_name, categories(name), goal_contributions(goals(name))')
-    .eq('couple_id', coupleId)
-    .order('expense_date', { ascending: true });
-  if (error) throw error;
-  return data || [];
+  const PAGE = 1000;
+  const all = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('expense_date, description, amount, currency, split, paid_by_snapshot_name, categories(name), goal_contributions(goals(name))')
+      .eq('couple_id', coupleId)
+      .order('expense_date', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return all;
 }
 
 // ---- Account deletion (App Store 5.1.1v) ----

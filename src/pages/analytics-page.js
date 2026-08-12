@@ -28,7 +28,7 @@ function showAddBudgetModal() {
       <div class="modal-handle"></div>
       <div class="modal-title">${t('analytics.newBudget')}</div>
       <div class="form-group"><label class="form-label">${t('common.category')}</label>
-        <select class="form-input" id="budget-cat">${categories.map(c => `<option value="${c.id}">${e(c.name)}</option>`).join('')}</select>
+        <select class="form-input" id="budget-cat">${categories.map(c => `<option value="${c.id}">${e(categoryLabel(c.name))}</option>`).join('')}</select>
       </div>
       <div class="form-group"><label class="form-label">${t('analytics.limit', { currency: couple.currency })}</label>
         <input type="number" class="form-input" id="budget-limit" placeholder="10000" inputmode="numeric">
@@ -87,10 +87,22 @@ export function registerAnalyticsRoute() {
     const filterBy = state.analyticsFilterBy || null;
     const sides = resolveMemberSides(members);
     const { memberA, memberB } = sides;
-    const filteredExpenses = filterExpensesByMemberChip(expenses, filterBy, sides);
+    // Накопления в цель — не траты: на главной они уже исключены, здесь раздували сумму,
+  // среднее в день и категорию «Другое» (у них нет category_id)
+  const isGoalExpense = (x) => Array.isArray(x.goal_contributions) && x.goal_contributions.length > 0;
+  const spendable = expenses.filter((x) => !isGoalExpense(x));
+  const filteredExpenses = filterExpensesByMemberChip(spendable, filterBy, sides);
 
     const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-    const prevTotal = prevExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    // Для прошедшего месяца — все его дни, для текущего — сколько прошло: деление на
+  // фиксированные 30 занижало среднее в начале месяца в разы
+  const [avgY, avgM] = month.split('-').map(Number);
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === avgY && now.getMonth() + 1 === avgM;
+  const daysForAverage = isCurrentMonth ? now.getDate() : new Date(avgY, avgM, 0).getDate();
+
+  const prevFiltered = filterExpensesByMemberChip(prevExpenses.filter((x) => !isGoalExpense(x)), filterBy, sides);
+  const prevTotal = prevFiltered.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
     const trendPct = prevTotal > 0 ? Math.round(((grandTotal - prevTotal) / prevTotal) * 100) : 0;
 
     const resolvePayerId = (expense) => {
@@ -126,6 +138,17 @@ export function registerAnalyticsRoute() {
     const sortedCats = [...catMap.values()].sort((a, b) => b.total - a.total);
     const topCategory = sortedCats[0] || null;
 
+    // Бюджеты заводятся на пару целиком, поэтому их прогресс не должен зависеть
+    // от выбранного чипа участника
+    const coupleCatMap = new Map();
+    for (const expense of spendable) {
+      const categoryId = expense.category_id || 'other';
+      const acc = coupleCatMap.get(categoryId) || { category_id: categoryId, total: 0 };
+      acc.total += parseFloat(expense.amount);
+      coupleCatMap.set(categoryId, acc);
+    }
+    const coupleCats = [...coupleCatMap.values()];
+
     const incomeAuthorLabel = (uid) => {
       const m = (members || []).find((x) => x.id === uid);
       if (!m) return '—';
@@ -158,7 +181,7 @@ export function registerAnalyticsRoute() {
         </div>
         <div class="stats-grid">
           <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? t('analytics.totalOf', { name: e(selectedMemberLabel) }) : t('analytics.total')}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
-          <div class="stat-card"><div class="stat-label">${t('analytics.avgPerDay')}</div><div class="stat-value">${formatMoney(grandTotal / 30, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.avgPerDay')}</div><div class="stat-value">${formatMoney(grandTotal / daysForAverage, state.couple.currency)}</div></div>
           <div class="stat-card"><div class="stat-label">${t('analytics.vsPrevMonth')}</div><div class="stat-value">${trendPct > 0 ? '+' : ''}${trendPct}%</div></div>
           <div class="stat-card"><div class="stat-label">${t('analytics.topCategory')}</div><div class="stat-value" style="font-size:14px;">${e(topCategory?.category_name || '—')}</div></div>
           ${payerTotals.map(p => `
@@ -193,14 +216,15 @@ export function registerAnalyticsRoute() {
         <div class="section-header"><span class="section-title">${t('analytics.budgets')}</span><button class="section-action" id="btn-add-budget">${t('analytics.addAction')}</button></div>
         <div id="budgets-list">
           ${budgets.length === 0 ? `<div class="empty-state"><p>${t('analytics.noBudgets')}</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">${t('analytics.addBudget')}</button></div>` : budgets.map(b => {
-            const spent = sortedCats.find(c => c.category_id === b.category_id)?.total || 0;
+            // Бюджет ставится на пару, поэтому считаем по всем тратам, а не по выбранному участнику
+              const spent = coupleCats.find(c => c.category_id === b.category_id)?.total || 0;
             const percentage = pct(spent, b.limit_amount);
             const fillClass = percentage > 100 ? 'over' : percentage > 80 ? 'warn' : '';
             return `
               <div class="budget-card" data-budget-id="${b.id}">
                 <div class="budget-header">
                   <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(categoryLabel(b.categories?.name) || t('analytics.categoryFallback'))}</div>
-                  <div class="budget-amounts">${formatMoney(spent)} / ${formatMoney(b.limit_amount)}</div>
+                  <div class="budget-amounts">${formatMoney(spent, state.couple.currency)} / ${formatMoney(b.limit_amount, state.couple.currency)}</div>
                 </div>
                 <div class="budget-track"><div class="budget-fill ${fillClass}" style="width: ${Math.min(percentage, 100)}%; background: ${!fillClass ? safeColor(b.categories?.color || '#1d9e75') : ''};"></div></div>
                 <div class="budget-pct">${t('analytics.pctUsed', { pct: percentage })}</div>
