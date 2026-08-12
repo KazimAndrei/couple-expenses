@@ -13,11 +13,11 @@ export const ENTITLEMENT = 'premium';
 let configured = false;
 let initError = null;
 
-// Статический импорт: динамический чанк в Capacitor WebView мог не догрузиться,
-// и тогда любой вызов к покупкам висел вечно вместо ошибки.
-async function plugin() {
-  return Purchases;
-}
+// ВАЖНО: Purchases — это Proxy Capacitor, у которого ЛЮБОЕ свойство (включая `then`)
+// возвращает функцию. Поэтому он выглядит как thenable: любой await над ним или возврат
+// из async-функции заставляет движок звать Purchases.then(resolve, reject), мост не находит
+// метод `then` и не вызывает ни resolve, ни reject — промис висит вечно.
+// Используем импортированный объект напрямую, без обёрток и без await.
 
 export function purchasesAvailable() {
   return Capacitor.isNativePlatform() && Boolean(API_KEY);
@@ -51,8 +51,7 @@ export async function initPurchases() {
   const userId = currentUserId();
   if (!userId) { diagError('purchases init', new Error('нет пользователя')); return; }
   try {
-    const Purchases = await plugin();
-    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 8000);
+    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 6000);
     configured = true;
     diagStep('purchases: configured');
   } catch (err) {
@@ -75,9 +74,8 @@ export async function getOfferingPackages() {
   if (!purchasesAvailable()) return null;
   await initPurchases();
   try {
-    const Purchases = await plugin();
     // Стор иногда не отвечает вовсе — без таймаута пейволл навсегда остался бы с фолбэк-ценами
-    const { current, all } = await withTimeout('getOfferings', Purchases.getOfferings(), 10000);
+    const { current, all } = await withTimeout('getOfferings', Purchases.getOfferings(), 8000);
     if (!current) {
       const offeringsCount = Object.keys(all || {}).length;
       lastOfferingsError = initError || (offeringsCount === 0
@@ -101,7 +99,6 @@ export async function getOfferingPackages() {
 export async function probeProducts() {
   try {
     await initPurchases();
-    const Purchases = await plugin();
     const t0 = Date.now();
     const res = await withTimeout('getProducts',
       Purchases.getProducts({ productIdentifiers: ['ce_premium_monthly', 'ce_premium_yearly'] }), 8000);
@@ -117,13 +114,11 @@ function hasEntitlement(customerInfo) {
 }
 
 export async function purchasePackage(pkg) {
-  const Purchases = await plugin();
   const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
   return hasEntitlement(customerInfo);
 }
 
 export async function restorePurchases() {
-  const Purchases = await plugin();
   const { customerInfo } = await Purchases.restorePurchases();
   return hasEntitlement(customerInfo);
 }
@@ -134,7 +129,6 @@ export async function isPremiumActive({ timeoutMs = 5000 } = {}) {
   if (!purchasesAvailable()) return false;
   const check = (async () => {
     await initPurchases();
-    const Purchases = await plugin();
     const { customerInfo } = await withTimeout('getCustomerInfo', Purchases.getCustomerInfo(), 6000);
     return hasEntitlement(customerInfo);
   })();

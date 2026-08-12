@@ -136,7 +136,7 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   // Жёсткий внешний предел: что бы ни случилось внутри SDK, пейволл не остаётся в загрузке.
   Promise.race([
     getOfferingPackages(),
-    new Promise((resolve) => setTimeout(() => resolve(null), 12000)),
+    new Promise((resolve) => setTimeout(() => resolve(null), 20000)),
   ]).then((pkgs) => {
     const dbg = document.getElementById('pw-debug');
     if (dbg) dbg.textContent = pkgs ? 'тарифы получены' : `offerings: ${getLastOfferingsError() || 'null'}`;
