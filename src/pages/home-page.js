@@ -1,6 +1,6 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt } from '../lib/supabase.js';
+import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
@@ -298,11 +298,11 @@ async function showAddExpenseModal() {
     const splitPct = 50;
 
     // Чек грузим до создания расхода; его отсутствие — не повод терять запись
-    let receiptUrl = null;
+    let receiptPath = null;
     const receiptFile = receiptInput.files?.[0];
     if (receiptFile) {
       try {
-        receiptUrl = await uploadReceipt(receiptFile, couple.id);
+        receiptPath = await uploadReceipt(receiptFile, couple.id);
       } catch (upErr) {
         showToast(t('common.error', { msg: getReadableError(upErr) }));
       }
@@ -318,7 +318,7 @@ async function showAddExpenseModal() {
       split_payer_pct: splitPct,
       expense_date: date,
       currency: couple.currency || 'USD',
-      receipt_url: receiptUrl,
+      receipt_url: receiptPath,
     };
 
     let created = null;
@@ -334,8 +334,8 @@ async function showAddExpenseModal() {
         });
         // RPC возвращает голую строку expenses — доклеиваем связь для optimistic-рендера как накопления
         created.goal_contributions = [{ goal_id: goalId, goals: { name: goals.find((g) => g.id === goalId)?.name || description } }];
-        if (receiptUrl) {
-          try { created = { ...created, ...(await updateExpense(created.id, { receipt_url: receiptUrl })) }; } catch { /* чек не критичен */ }
+        if (receiptPath) {
+          try { created = { ...created, ...(await updateExpense(created.id, { receipt_url: receiptPath })) }; } catch { /* чек не критичен */ }
         }
       } else {
         created = await addExpense(expensePayload);
@@ -560,8 +560,11 @@ function showExpenseActionsModal(expense, app) {
     };
   };
 
-  document.getElementById('btn-view-receipt')?.addEventListener('click', () => {
-    window.open(expense.receipt_url, '_blank');
+  document.getElementById('btn-view-receipt')?.addEventListener('click', async () => {
+    // Бакет чеков приватный — открываем по временной подписанной ссылке
+    const url = await receiptUrl(expense.receipt_url).catch(() => null);
+    if (url) window.open(url, '_blank');
+    else showToast(t('common.error', { msg: t('errors.network') }));
   });
   document.getElementById('btn-edit-expense').onclick = openEdit;
   document.getElementById('btn-duplicate-expense').onclick = async () => {

@@ -172,9 +172,10 @@ export async function updateDisplayName(name) {
 // ---- Expense helpers ----
 export async function getExpenses(coupleId, month) {
   const startDate = `${month}-01`;
-  const endDate = new Date(month + '-01');
-  endDate.setMonth(endDate.getMonth() + 1);
-  const endStr = endDate.toISOString().slice(0, 10);
+  // Границу месяца считаем строками: Date парсит '2026-03-01' как UTC, а getMonth/setMonth
+  // работают в локальном времени — в западных зонах месяц уезжал на день-два.
+  const [y, m] = month.split('-').map(Number);
+  const endStr = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('expenses')
     .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name))')
@@ -434,8 +435,17 @@ export async function uploadReceipt(file, coupleId) {
   const path = `${coupleId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from('receipts').upload(path, file, { contentType: file.type || 'image/jpeg' });
   if (error) throw error;
-  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
-  return data?.publicUrl || null;
+  // Храним путь, а не публичную ссылку: бакет приватный, чек виден только своей паре
+  return path;
+}
+
+// Чек открывается по временной подписанной ссылке (час) — публичных ссылок на чеки нет
+export async function receiptUrl(pathOrUrl) {
+  if (!pathOrUrl) return null;
+  if (pathOrUrl.startsWith('http')) return pathOrUrl; // старые записи с публичной ссылкой
+  const { data, error } = await supabase.storage.from('receipts').createSignedUrl(pathOrUrl, 3600);
+  if (error) { console.error('receipt url failed:', error); return null; }
+  return data?.signedUrl || null;
 }
 
 // ---- Settlement helpers ----

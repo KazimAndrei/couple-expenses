@@ -77,7 +77,10 @@ export function currencyName(code) {
 
 export function formatMoney(amount, currency = 'USD') {
   const sym = CURRENCIES[currency]?.[0] || currency;
-  return `${getFormatter(currency).format(Math.round(amount))} ${sym}`;
+  const value = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (!Number.isFinite(value)) return `— ${sym}`;
+  // Округление до целых съедало центы; форматтер сам знает, у каких валют дробной части нет
+  return `${getFormatter(currency).format(value)} ${sym}`;
 }
 
 // ---- Date helpers ----
@@ -142,8 +145,13 @@ export function formatExpenseDateRow(dateStr) {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
-export function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+// Локальная дата, а не UTC: в UTC+7 после полуночи и в UTC-5 вечером
+// toISOString() отдавал соседний день, и расход уезжал в чужой месяц
+export function todayStr(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function groupByDate(expenses) {
