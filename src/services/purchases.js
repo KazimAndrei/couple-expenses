@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Purchases } from '@revenuecat/purchases-capacitor';
 import { supabase } from '../lib/supabase.js';
+import { getState } from '../lib/store.js';
 import { diagError, diagStep } from './diagnostics.js';
 // diagStep/diagError пишут только в dev-сборках — в релиз ничего не попадает
 
@@ -10,6 +11,7 @@ const API_KEY = import.meta.env.VITE_REVENUECAT_IOS_KEY;
 export const ENTITLEMENT = 'premium';
 
 let configured = false;
+let initError = null;
 
 // Статический импорт: динамический чанк в Capacitor WebView мог не догрузиться,
 // и тогда любой вызов к покупкам висел вечно вместо ошибки.
@@ -32,24 +34,35 @@ function withTimeout(label, promise, ms = 8000) {
   ]);
 }
 
+// id пользователя берём из состояния приложения: supabase.auth.getUser()/getSession()
+// в Capacitor WebView могут не вернуть управление (внутренний лок supabase-js),
+// а это подвешивало весь пейволл ещё до первого обращения к стору.
+function currentUserId() {
+  const stateUser = getState()?.user?.id;
+  if (stateUser) return stateUser;
+  try {
+    const raw = Object.keys(localStorage).find((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    return raw ? JSON.parse(localStorage.getItem(raw))?.user?.id || null : null;
+  } catch { return null; }
+}
+
 export async function initPurchases() {
   if (!purchasesAvailable() || configured) return;
-  const { data } = await Promise.race([
-    supabase.auth.getUser(),
-    new Promise((resolve) => setTimeout(() => resolve({ data: {} }), 4000)),
-  ]);
-  const user = data?.user || (await supabase.auth.getSession()).data?.session?.user;
-  if (!user) { diagError('purchases init', new Error('нет пользователя')); return; }
+  const userId = currentUserId();
+  if (!userId) { diagError('purchases init', new Error('нет пользователя')); return; }
   try {
     const Purchases = await plugin();
-    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: user.id }), 8000);
+    await withTimeout('configure', Purchases.configure({ apiKey: API_KEY, appUserID: userId }), 8000);
     configured = true;
     diagStep('purchases: configured');
   } catch (err) {
+    // Не бросаем: вызывающие ждут обычного продолжения, а отклонённый промис
+    // без обработчика оставлял пейволл в бесконечной загрузке.
     diagError('purchases init failed', err);
-    throw err;
+    initError = err?.message || String(err);
   }
 }
+
 
 // Последняя ошибка загрузки тарифов — для диагностики в UI
 let lastOfferingsError = null;
@@ -67,9 +80,9 @@ export async function getOfferingPackages() {
     const { current, all } = await withTimeout('getOfferings', Purchases.getOfferings(), 10000);
     if (!current) {
       const offeringsCount = Object.keys(all || {}).length;
-      lastOfferingsError = offeringsCount === 0
+      lastOfferingsError = initError || (offeringsCount === 0
         ? 'RC: no offerings returned'
-        : 'App Store returned no products (storefront/availability?)';
+        : 'App Store returned no products (storefront/availability?)');
       return null;
     }
     lastOfferingsError = null;

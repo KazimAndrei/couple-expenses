@@ -15,6 +15,19 @@ export function inviteLink(code) {
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ---- Auth helpers ----
+// supabase.auth.getUser() в Capacitor WebView иногда не возвращает управление
+// (внутренний лок supabase-js + отсутствие navigator.locks), из-за чего экраны зависали.
+// Берём пользователя из локальной сессии — она уже восстановлена при старте.
+export async function currentUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user) return session.user;
+  const { data } = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise((resolve) => setTimeout(() => resolve({ data: {} }), 5000)),
+  ]);
+  return data?.user || null;
+}
+
 async function sha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -95,7 +108,7 @@ export async function ensureAuthenticated() {
 }
 
 export async function getProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
   const { data, error } = await supabase
     .from('profiles')
@@ -149,7 +162,7 @@ export async function joinCouple(inviteCode, displayName) {
 }
 
 export async function updateDisplayName(name) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error('not authenticated');
   const { error } = await supabase.from('profiles').update({ display_name: name }).eq('id', user.id);
   if (error) throw error;
@@ -302,7 +315,7 @@ export async function deleteBudget(id) {
 }
 
 export async function addGoalContribution(goalId, amount) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   const { data, error } = await supabase
     .from('goal_contributions')
     .insert({ goal_id: goalId, contributed_by: user.id, amount })
@@ -346,7 +359,7 @@ export async function getIncomeEntries(coupleId, month) {
 }
 
 export async function addIncomeEntry(coupleId, month, amount) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user?.id) throw new Error('not authenticated');
   const { error } = await supabase.from('couple_income_entries').insert({
     couple_id: coupleId,
@@ -427,7 +440,7 @@ export async function uploadReceipt(file, coupleId) {
 // ---- Settlement helpers ----
 // settledBy — кто погасил долг (должник); по умолчанию текущий юзер
 export async function addSettlement(coupleId, amount, note = '', settledBy = null) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   const { data, error } = await supabase
     .from('settlements')
     .insert({ couple_id: coupleId, settled_by: settledBy || user.id, amount, note })
@@ -472,7 +485,7 @@ export function subscribeToGoals(coupleId, callback) {
 
 // ---- Push notifications ----
 export async function registerPush(subscription) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   const keys = subscription.toJSON().keys;
   const { error } = await supabase.from('push_subscriptions').upsert({
     user_id: user.id,

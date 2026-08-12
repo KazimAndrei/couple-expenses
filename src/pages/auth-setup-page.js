@@ -169,34 +169,27 @@ export function registerAuthSetupRoutes() {
       if (btnCreate.dataset.busy === '1') return;
       const name = readName();
       if (!name) { showToast(t('common.enterName')); return; }
+      // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
+      // Пейволл открываем синхронно: любой await до отрисовки (auth, стор) может подвесить кнопку.
+      // Гость (dev-режим) может закрыть пейволл крестиком и продолжить без подписки.
+      const skipKey = 'ce_paywall_skip';
+      if (purchasesAvailable() && !sessionStorage.getItem(skipKey)) {
+        const isGuest = session?.user?.is_anonymous === true;
+        updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
+        renderPaywall(app, {
+          onSuccess: () => navigate('/setup'),
+          onClose: () => {
+            if (isGuest) {
+              sessionStorage.setItem(skipKey, '1');
+              showToast(t('paywall.guestSkipped'));
+            }
+            navigate('/setup');
+          },
+        });
+        return;
+      }
       btnCreate.dataset.busy = '1';
       btnCreate.style.opacity = '0.6';
-      try {
-        // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
-        // Гость (dev-режим) может закрыть пейволл крестиком и продолжить без подписки.
-        const skipKey = 'ce_paywall_skip';
-        if (purchasesAvailable() && !sessionStorage.getItem(skipKey) && !(await isPremiumActive())) {
-          await updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
-          const isGuest = session?.user?.is_anonymous === true;
-          renderPaywall(app, {
-            onSuccess: () => navigate('/setup'),
-            onClose: () => {
-              if (isGuest) {
-                sessionStorage.setItem(skipKey, '1');
-                showToast(t('paywall.guestSkipped'));
-              }
-              navigate('/setup');
-            },
-          });
-          return;
-        }
-      } catch (gateErr) {
-        // Сбой стора не должен мешать создать пару — доступ всё равно проверяется на сервере
-        console.error('paywall gate failed:', gateErr);
-      } finally {
-        btnCreate.dataset.busy = '0';
-        btnCreate.style.opacity = '';
-      }
       try {
         await updateDisplayName(name);
         const couple = await createCouple();
@@ -221,6 +214,9 @@ export function registerAuthSetupRoutes() {
         document.getElementById('btn-start').onclick = () => enterApp(couple);
       } catch (err) {
         showToast(t('common.error', { msg: getReadableError(err) }));
+      } finally {
+        btnCreate.dataset.busy = '0';
+        btnCreate.style.opacity = '';
       }
     };
 
