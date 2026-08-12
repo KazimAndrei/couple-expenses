@@ -68,18 +68,12 @@ Deno.serve(async (req: Request) => {
     .eq("owner_id", appUserId)
     .maybeSingle();
 
-  if (!couple) {
-    // Юзер оплатил до создания пары — сохраним, привяжем при создании (couple_id проставит create_couple flow)
-    return new Response(JSON.stringify({ ok: true, pending: true, reason: "no_couple_for_owner" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
+  // Пары может ещё не быть: пейволл стоит ДО её создания. Подписку пишем за пользователем,
+  // а couple_id проставит триггер couples_link_subscription, когда пара появится.
   const { status, willRenew } = mapStatus(type, expiresAtMs);
   const { error } = await db.from("subscriptions").upsert({
-    couple_id: couple.id,
-    owner_id: couple.owner_id,
+    couple_id: couple?.id ?? null,
+    owner_id: appUserId,
     rc_app_user_id: appUserId,
     product_id: productId,
     status,
@@ -88,14 +82,14 @@ Deno.serve(async (req: Request) => {
     expires_at: expiresAtMs ? new Date(expiresAtMs).toISOString() : null,
     store,
     updated_at: new Date().toISOString(),
-  }, { onConflict: "couple_id" });
+  }, { onConflict: "owner_id" });
 
   if (error) {
     console.error("subscription upsert failed", error);
     return new Response(JSON.stringify({ ok: false, error: error.message }), { status: 500 });
   }
 
-  return new Response(JSON.stringify({ ok: true, couple_id: couple.id, status, type }), {
+  return new Response(JSON.stringify({ ok: true, couple_id: couple?.id ?? null, owner_id: appUserId, status, type }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
