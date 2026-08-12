@@ -128,8 +128,9 @@ export function registerAuthSetupRoutes() {
     if (profile?.couple_id) { await enterApp(profile.couples); return; }
 
     const pendingCode = localStorage.getItem(PENDING_INVITE_KEY) || '';
-    const knownName = profile?.display_name && !['User', 'Пользователь'].includes(profile.display_name)
-      ? profile.display_name : '';
+    const typedName = sessionStorage.getItem('ce_setup_name') || '';
+    const knownName = typedName || (profile?.display_name && !['User', 'Пользователь'].includes(profile.display_name)
+      ? profile.display_name : '');
 
     app.innerHTML = `
       <div class="setup-page page-enter">
@@ -153,6 +154,9 @@ export function registerAuthSetupRoutes() {
     `;
 
     const readName = () => document.getElementById('setup-name').value.trim();
+    document.getElementById('setup-name').addEventListener('input', (ev) => {
+      sessionStorage.setItem('ce_setup_name', ev.target.value.trim());
+    });
 
     // Выход прямо с экрана настройки: иначе гость без пары заперт на нём
     document.getElementById('btn-setup-logout').onclick = async () => {
@@ -160,6 +164,7 @@ export function registerAuthSetupRoutes() {
         await signOut();
         localStorage.removeItem(PENDING_INVITE_KEY);
         sessionStorage.removeItem('ce_paywall_skip');
+        sessionStorage.removeItem('ce_setup_name');
       } catch { /* сессия уже недействительна — всё равно уходим на вход */ }
       navigate('/auth');
     };
@@ -176,6 +181,7 @@ export function registerAuthSetupRoutes() {
         await updateDisplayName(name);
         const couple = await createCouple();
         localStorage.removeItem(PENDING_INVITE_KEY);
+        sessionStorage.removeItem('ce_setup_name');
         const link = inviteLink(couple.invite_code);
         // Выбор уже сделан — карточки «создать / присоединиться» и поле имени убираем,
         // иначе экран выглядит так, будто пару предлагают создать второй раз
@@ -262,6 +268,7 @@ export function registerAuthSetupRoutes() {
           await updateDisplayName(name);
           const couple = await joinCouple(code, name);
           localStorage.removeItem(PENDING_INVITE_KEY);
+          sessionStorage.removeItem('ce_setup_name');
           showToast(t('setup.joined'));
           await enterApp(couple);
         } catch (err) {

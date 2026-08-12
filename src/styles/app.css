@@ -455,3 +455,13 @@ select.form-input { cursor:pointer; }
 .paywall-terms { font-size:11px; line-height:1.45; color:var(--c-text-muted); text-align:center; margin:12px 0 10px; }
 .paywall-links { display:flex; justify-content:center; gap:16px; flex-wrap:wrap; }
 .paywall-link { background:none; border:none; padding:0; font:inherit; font-size:12px; color:var(--c-text-secondary); text-decoration:underline; cursor:pointer; font-family:var(--font); }
+
+/* ---- Создание категории: превью + сетка значков ---- */
+.cat-preview { display:flex; justify-content:center; margin: 4px 0 18px; }
+.cat-preview-dot { width:64px; height:64px; border-radius:20px; display:flex; align-items:center; justify-content:center; transition: background 0.2s; }
+.icon-grid { display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; }
+.icon-pick { aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:12px; border:2px solid transparent; background:var(--c-surface-alt); color:var(--c-text-secondary); cursor:pointer; padding:0; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+.icon-pick.selected { border-color:var(--c-accent); background:var(--c-accent-light); color:var(--c-accent); }
+.color-row { display:flex; gap:10px; flex-wrap:wrap; }
+.color-row .color-dot { width:30px; height:30px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; outline-offset:2px; }
+.color-row .color-dot.selected { outline:2px solid var(--c-text); }

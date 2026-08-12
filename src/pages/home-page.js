@@ -2,7 +2,7 @@ import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, addSettlement, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
-import { CURRENCIES, availableIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
+import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -182,45 +182,55 @@ async function showAddExpenseModal() {
       <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">${t('home.newCategory')}</div>
-        <div class="form-group"><label class="form-label">${t('common.name')}</label><input type="text" class="form-input" id="new-cat-name" placeholder="${t('home.catNamePlaceholder')}" autocomplete="off"></div>
-        <div class="form-group"><label class="form-label">${t('home.icon')}</label>
-          <div class="cat-grid" id="icon-picker">
-            ${availableIcons.filter(n => !['plus','chevron-left','chevron-right','check','x','copy'].includes(n)).map((n, i) => `
-              <div class="cat-option ${i === 0 ? 'selected' : ''}" data-icon="${n}">
-                <div class="cat-dot" style="background:var(--c-surface-alt)">${icon(n, 16)}</div>
-                <span style="font-size:10px;overflow:hidden;text-overflow:ellipsis;max-width:60px;">${n}</span>
-              </div>
+        <div class="cat-preview">
+          <div class="cat-preview-dot" id="cat-preview-dot" style="background:${catColors[0]}18">${icon(categoryIcons[0], 30, catColors[0])}</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">${t('home.icon')}</label>
+          <div class="icon-grid" id="icon-picker">
+            ${categoryIcons.map((n, i) => `
+              <button type="button" class="icon-pick ${i === 0 ? 'selected' : ''}" data-icon="${n}" aria-label="${n}">${icon(n, 22)}</button>
             `).join('')}
           </div>
         </div>
-        <div class="form-group"><label class="form-label">${t('home.color')}</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="color-picker">
-            ${catColors.map((c, i) => `<div class="color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid transparent;cursor:pointer;"></div>`).join('')}
+        <div class="form-group">
+          <label class="form-label">${t('home.color')}</label>
+          <div class="color-row" id="color-picker">
+            ${catColors.map((c, i) => `<button type="button" class="color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" aria-label="${c}"></button>`).join('')}
           </div>
         </div>
+        <div class="form-group"><label class="form-label">${t('common.name')}</label><input type="text" class="form-input" id="new-cat-name" placeholder="${t('home.catNamePlaceholder')}" autocomplete="off"></div>
         <button class="btn btn-primary" id="btn-save-new-cat">${t('common.create')}</button>
       </div>
     `;
     document.body.appendChild(catBackdrop);
     enableModalSwipe(catBackdrop);
-    catBackdrop.querySelectorAll('#icon-picker .cat-option').forEach(opt => {
+    // Превью показывает, как категория будет выглядеть в списке
+    const refreshPreview = () => {
+      const ic = catBackdrop.querySelector('#icon-picker .selected')?.dataset.icon || categoryIcons[0];
+      const col = catBackdrop.querySelector('#color-picker .selected')?.dataset.color || catColors[0];
+      const dot = document.getElementById('cat-preview-dot');
+      dot.style.background = col + '18';
+      dot.innerHTML = icon(ic, 30, col);
+    };
+    catBackdrop.querySelectorAll('#icon-picker .icon-pick').forEach(opt => {
       opt.addEventListener('click', () => {
-        catBackdrop.querySelectorAll('#icon-picker .cat-option').forEach(o => o.classList.remove('selected'));
+        catBackdrop.querySelectorAll('#icon-picker .icon-pick').forEach(o => o.classList.remove('selected'));
         opt.classList.add('selected');
+        refreshPreview();
       });
     });
     catBackdrop.querySelectorAll('#color-picker .color-dot').forEach(dot => {
       dot.addEventListener('click', () => {
-        catBackdrop.querySelectorAll('#color-picker .color-dot').forEach(d => d.style.borderColor = 'transparent');
-        dot.style.borderColor = 'var(--c-text)';
         catBackdrop.querySelectorAll('#color-picker .color-dot').forEach(d => d.classList.remove('selected'));
         dot.classList.add('selected');
+        refreshPreview();
       });
     });
     document.getElementById('btn-save-new-cat').onclick = async () => {
       const name = document.getElementById('new-cat-name').value.trim();
       if (!name) { showToast(t('common.enterTitle')); return; }
-      const selectedIcon = catBackdrop.querySelector('#icon-picker .cat-option.selected')?.dataset.icon || 'more-horizontal';
+      const selectedIcon = catBackdrop.querySelector('#icon-picker .icon-pick.selected')?.dataset.icon || 'more-horizontal';
       const selectedColor = catBackdrop.querySelector('#color-picker .color-dot.selected')?.dataset.color || '#888780';
       try {
         await addCategory({ couple_id: couple.id, name, icon: selectedIcon, color: selectedColor, sort_order: categories.length + 1 });
