@@ -91,6 +91,13 @@ export function registerAnalyticsRoute() {
   // среднее в день и категорию «Другое» (у них нет category_id)
   const isGoalExpense = (x) => Array.isArray(x.goal_contributions) && x.goal_contributions.length > 0;
   const spendable = expenses.filter((x) => !isGoalExpense(x));
+  // Доход и накопления — общие для пары, поэтому считаются по всем записям, без чипа участника
+  const incomeTotal = incomeEntries.reduce((sum, ent) => sum + parseFloat(ent.amount || 0), 0);
+  const savedTotal = expenses.filter(isGoalExpense).reduce((sum, x) => sum + parseFloat(x.amount || 0), 0);
+  const coupleSpent = spendable.reduce((sum, x) => sum + parseFloat(x.amount || 0), 0);
+  const leftover = incomeTotal - coupleSpent - savedTotal;
+  const spentPct = incomeTotal > 0 ? Math.min(100, Math.round((coupleSpent / incomeTotal) * 100)) : 0;
+  const savedPct = incomeTotal > 0 ? Math.min(100 - spentPct, Math.round((savedTotal / incomeTotal) * 100)) : 0;
   const filteredExpenses = filterExpensesByMemberChip(spendable, filterBy, sides);
 
     const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
@@ -179,6 +186,29 @@ export function registerAnalyticsRoute() {
             ${memberChips.join('\n            ')}
           </div>
         </div>
+        ${!filterBy ? `
+        <div class="money-flow">
+          <div class="money-flow-head">
+            <div>
+              <div class="money-flow-label">${t('analytics.income')}</div>
+              <div class="money-flow-income">${formatMoney(incomeTotal, state.couple.currency)}</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="money-flow-label">${leftover >= 0 ? t('analytics.leftover') : t('analytics.overspent')}</div>
+              <div class="money-flow-left ${leftover < 0 ? 'negative' : ''}">${formatMoney(Math.abs(leftover), state.couple.currency)}</div>
+            </div>
+          </div>
+          ${incomeTotal > 0 ? `
+            <div class="money-flow-bar">
+              <div class="money-flow-seg spent" style="width:${spentPct}%"></div>
+              <div class="money-flow-seg saved" style="width:${savedPct}%"></div>
+            </div>
+            <div class="money-flow-legend">
+              <span><i class="dot spent"></i>${t('analytics.spent')} ${formatMoney(coupleSpent, state.couple.currency)} · ${spentPct}%</span>
+              ${savedTotal > 0 ? `<span><i class="dot saved"></i>${t('analytics.saved')} ${formatMoney(savedTotal, state.couple.currency)}</span>` : ''}
+            </div>
+          ` : `<div class="money-flow-hint">${t('analytics.noIncomeHint')}</div>`}
+        </div>` : ''}
         <div class="stats-grid">
           <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? t('analytics.totalOf', { name: e(selectedMemberLabel) }) : t('analytics.total')}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
           <div class="stat-card"><div class="stat-label">${t('analytics.avgPerDay')}</div><div class="stat-value">${formatMoney(grandTotal / daysForAverage, state.couple.currency)}</div></div>

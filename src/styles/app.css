@@ -458,3 +458,20 @@ select.form-input { cursor:pointer; }
 .color-row { display:flex; gap:10px; flex-wrap:wrap; }
 .color-row .color-dot { width:30px; height:30px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; outline-offset:2px; }
 .color-row .color-dot.selected { outline:2px solid var(--c-text); }
+
+/* ---- Аналитика: доход → расходы → остаток ---- */
+.money-flow { margin: 0 16px 16px; padding: 16px; border-radius: var(--radius); background: var(--c-surface); border: 1px solid var(--c-border); }
+.money-flow-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.money-flow-label { font-size: 12px; color: var(--c-text-secondary); margin-bottom: 4px; }
+.money-flow-income { font-size: 22px; font-weight: 700; }
+.money-flow-left { font-size: 22px; font-weight: 700; color: var(--c-accent); }
+.money-flow-left.negative { color: var(--c-danger, #e24b4a); }
+.money-flow-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--c-surface-alt); margin: 14px 0 10px; }
+.money-flow-seg { height: 100%; transition: width 0.3s cubic-bezier(0.22,1,0.36,1); }
+.money-flow-seg.spent { background: var(--c-accent); }
+.money-flow-seg.saved { background: #7F77DD; }
+.money-flow-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--c-text-secondary); }
+.money-flow-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.money-flow-legend .dot.spent { background: var(--c-accent); }
+.money-flow-legend .dot.saved { background: #7F77DD; }
+.money-flow-hint { margin-top: 12px; font-size: 13px; color: var(--c-text-secondary); }
