@@ -9,6 +9,13 @@ export function route(path, handler) {
 }
 
 export function navigate(path) {
+  // Переход на текущий путь не меняет hash и не вызывает hashchange, поэтому
+  // экран не перерисовывался бы (так пейволл оставался поверх /setup после закрытия).
+  if (getCurrentPath().split('?')[0] === path.split('?')[0]) {
+    window.location.hash = path;
+    handleRoute();
+    return;
+  }
   window.location.hash = path;
 }
 

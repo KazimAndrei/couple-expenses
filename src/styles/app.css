@@ -433,8 +433,8 @@ select.form-input { cursor:pointer; }
 }
 
 /* ---- Paywall (владелец пары; приглашённый сюда не попадает) ---- */
-.paywall { min-height:100dvh; padding:calc(20px + var(--safe-top)) 20px calc(24px + var(--safe-bottom)); display:flex; flex-direction:column; }
-.paywall-close { position:absolute; top:calc(14px + var(--safe-top)); right:16px; width:34px; height:34px; border-radius:50%; border:none; background:var(--c-surface-alt); color:var(--c-text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.paywall { position:relative; min-height:100dvh; padding:calc(20px + var(--safe-top)) 20px calc(24px + var(--safe-bottom)); display:flex; flex-direction:column; }
+.paywall-close { position:absolute; z-index:3; top:calc(14px + var(--safe-top)); right:12px; width:44px; height:44px; border-radius:50%; border:none; background:var(--c-surface-alt); color:var(--c-text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .paywall-hero { text-align:center; padding:22px 0 18px; }
 .paywall-icon { width:64px; height:64px; border-radius:20px; background:linear-gradient(140deg, var(--c-accent), var(--c-accent-dark)); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; box-shadow:0 10px 28px rgba(29,158,117,0.35); }
 .paywall-title { font-size:27px; line-height:1.2; letter-spacing:-0.01em; margin-bottom:8px; }

@@ -164,32 +164,14 @@ export function registerAuthSetupRoutes() {
       navigate('/auth');
     };
 
-    document.getElementById('btn-create').onclick = async () => {
+    // Создание пары после того, как доступ подтверждён (оплатой или уже активной подпиской)
+    const doCreateCouple = async (name) => {
       const btnCreate = document.getElementById('btn-create');
-      if (btnCreate.dataset.busy === '1') return;
-      const name = readName();
-      if (!name) { showToast(t('common.enterName')); return; }
-      // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
-      // Пейволл открываем синхронно: любой await до отрисовки (auth, стор) может подвесить кнопку.
-      // Гость (dev-режим) может закрыть пейволл крестиком и продолжить без подписки.
-      const skipKey = 'ce_paywall_skip';
-      if (purchasesAvailable() && !sessionStorage.getItem(skipKey)) {
-        const isGuest = session?.user?.is_anonymous === true;
-        updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
-        renderPaywall(app, {
-          onSuccess: () => navigate('/setup'),
-          onClose: () => {
-            if (isGuest) {
-              sessionStorage.setItem(skipKey, '1');
-              showToast(t('paywall.guestSkipped'));
-            }
-            navigate('/setup');
-          },
-        });
-        return;
+      if (btnCreate) {
+        if (btnCreate.dataset.busy === '1') return;
+        btnCreate.dataset.busy = '1';
+        btnCreate.style.opacity = '0.6';
       }
-      btnCreate.dataset.busy = '1';
-      btnCreate.style.opacity = '0.6';
       try {
         await updateDisplayName(name);
         const couple = await createCouple();
@@ -215,9 +197,40 @@ export function registerAuthSetupRoutes() {
       } catch (err) {
         showToast(t('common.error', { msg: getReadableError(err) }));
       } finally {
-        btnCreate.dataset.busy = '0';
-        btnCreate.style.opacity = '';
+        if (btnCreate) {
+          btnCreate.dataset.busy = '0';
+          btnCreate.style.opacity = '';
+        }
       }
+    };
+
+    // Платит тот, кто создаёт пару. Приглашённый по ссылке сюда не попадает — у него доступ бесплатный.
+    // Пейволл открываем синхронно: любой await до отрисовки может подвесить кнопку.
+    const PAID_KEY = 'ce_paywall_skip';
+    document.getElementById('btn-create').onclick = async () => {
+      const name = readName();
+      if (!name) { showToast(t('common.enterName')); return; }
+
+      const alreadyPaid = sessionStorage.getItem(PAID_KEY) === '1';
+      if (!purchasesAvailable() || alreadyPaid) { await doCreateCouple(name); return; }
+
+      const isGuest = session?.user?.is_anonymous === true;
+      updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
+      renderPaywall(app, {
+        // После оплаты не гоняем юзера по кругу — сразу создаём пару
+        onSuccess: () => {
+          sessionStorage.setItem(PAID_KEY, '1');
+          navigate('/setup');
+          setTimeout(() => doCreateCouple(name), 0);
+        },
+        onClose: () => {
+          if (isGuest) {
+            sessionStorage.setItem(PAID_KEY, '1');
+            showToast(t('paywall.guestSkipped'));
+          }
+          navigate('/setup');
+        },
+      });
     };
 
     document.getElementById('btn-join').onclick = () => {

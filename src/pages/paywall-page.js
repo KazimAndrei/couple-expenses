@@ -3,10 +3,9 @@ import { escapeHtml, icon } from '../lib/utils.js';
 import { t } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
-import { getOfferingPackages, getLastOfferingsError, probeProducts, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
+import { getOfferingPackages, getLastOfferingsError, purchasePackage, restorePurchases, purchasesAvailable } from '../services/purchases.js';
 
 const e = escapeHtml;
-const DEBUG = import.meta.env.VITE_RC_DEBUG === '1';
 const SITE = 'https://coupleexpenses.com';
 
 // Фолбэк-цены: показываются в вебе и если стор недоступен. В нативе цены приходят из App Store.
@@ -87,8 +86,6 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
       if (!pkg) {
         const detail = getLastOfferingsError();
         showToast(detail ? `${t('paywall.noProducts')}\n${detail}` : t('paywall.noProducts'));
-        // Решающая диагностика: что отвечает сам StoreKit на прямой запрос продуктов
-        probeProducts().then((msg) => showToast(msg));
         return;
       }
       busy = true; draw();
@@ -119,42 +116,14 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   };
 
   draw();
-  if (DEBUG) {
-    const box = document.createElement('div');
-    box.id = 'pw-debug';
-    box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;padding:8px;border-radius:8px;background:#111;color:#0f0;font:11px/1.4 ui-monospace,monospace;white-space:pre-wrap';
-    box.textContent = 'v7 загружаю тарифы…';
-    document.body.appendChild(box);
-    const t0 = Date.now();
-    const tick = setInterval(() => {
-      const cur = document.getElementById('pw-debug');
-      if (cur && cur.textContent.includes('загружаю')) cur.textContent = `v7 загружаю тарифы… ${Math.round((Date.now() - t0) / 1000)}с`;
-      else clearInterval(tick);
-    }, 1000);
-  }
   // Цены из стора приходят асинхронно — перерисовываем, когда получим.
   // Жёсткий внешний предел: что бы ни случилось внутри SDK, пейволл не остаётся в загрузке.
   Promise.race([
     getOfferingPackages(),
     new Promise((resolve) => setTimeout(() => resolve(null), 20000)),
   ]).then((pkgs) => {
-    const dbg = document.getElementById('pw-debug');
-    if (dbg) dbg.textContent = pkgs ? 'тарифы получены' : `offerings: ${getLastOfferingsError() || 'null'}`;
-    if (pkgs) { packages = pkgs; draw(); return; }
-    // Диагностика видна на экране: тост исчезает раньше, чем его успеваешь прочитать
-    if (import.meta.env.VITE_RC_DEBUG === '1') {
-      probeProducts().then((msg) => {
-        const box = document.createElement('div');
-        box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;padding:8px;border-radius:8px;background:#111;color:#0f0;font:11px/1.4 ui-monospace,monospace;white-space:pre-wrap';
-        box.textContent = `offerings: ${getLastOfferingsError() || 'null'}\n${msg}`;
-        document.body.appendChild(box);
-      });
-    }
-  }).catch((err) => {
-    // Без этого отклонённый промис оставлял пейволл в вечной «загрузке»
-    const dbg = document.getElementById('pw-debug');
-    if (dbg) dbg.textContent = `ошибка: ${err?.message || err}`;
-  });
+    if (pkgs) { packages = pkgs; draw(); }
+  }).catch(() => { /* цены не пришли — на экране остаются фолбэк-значения */ });
 }
 
 export function registerPaywallRoute() {

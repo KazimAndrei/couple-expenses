@@ -176,12 +176,3 @@ exposeToastGlobally();
 setupOfflineBanner();
 init();
 
-// Разовая проверка канала до StoreKit (VITE_RC_DEBUG=1) — пишет результат в консоль устройства
-if (import.meta.env.VITE_RC_DEBUG === '1') {
-  // Ждём, пока приложение поднимет сессию в состояние — иначе покупкам нечего передать
-  setTimeout(() => {
-    import('./services/purchases.js').then(async (m) => {
-      console.error('[rc] probe:', await m.probeProducts());
-    }).catch((err) => console.error('[rc] module failed:', err?.message || err));
-  }, 8000);
-}

@@ -25,11 +25,9 @@ export function purchasesAvailable() {
 
 // Любой вызов через мост Capacitor может не вернуть ответ — тогда UI висит навсегда.
 // Всё, что уходит в нативный плагин, оборачиваем в таймаут.
-const DEBUG = import.meta.env.VITE_RC_DEBUG === '1';
 function withTimeout(label, promise, ms = 8000) {
-  if (DEBUG) console.error(`[rc] → ${label}`);
   return Promise.race([
-    Promise.resolve(promise).then((v) => { if (DEBUG) console.error(`[rc] ← ${label} ok`); return v; }),
+    promise,
     new Promise((_, rej) => setTimeout(() => rej(new Error(`${label}: нет ответа ${ms / 1000}с`)), ms)),
   ]);
 }
@@ -92,20 +90,6 @@ export async function getOfferingPackages() {
     lastOfferingsError = err?.message || String(err);
     diagError('getOfferings failed', err);
     return null;
-  }
-}
-
-// Диагностика: прямой запрос продуктов у StoreKit, минуя offerings
-export async function probeProducts() {
-  try {
-    await initPurchases();
-    const t0 = Date.now();
-    const res = await withTimeout('getProducts',
-      Purchases.getProducts({ productIdentifiers: ['ce_premium_monthly', 'ce_premium_yearly'] }), 8000);
-    const list = res?.products?.map((p) => `${p.identifier} ${p.priceString}`).join(', ') || 'ПУСТО';
-    return `SK за ${Date.now() - t0}мс: ${list}`;
-  } catch (err) {
-    return `SK ошибка: ${err?.message || err}`;
   }
 }
 
