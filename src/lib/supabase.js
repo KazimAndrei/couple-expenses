@@ -80,17 +80,6 @@ export async function signInWithApple() {
   return null; // страница уходит в редирект
 }
 
-// Гостевой вход на период разработки. Кнопка появляется только при VITE_ENABLE_GUEST=1;
-// перед релизом в стор флаг убирается из .env. Требует Anonymous sign-ins в Supabase.
-export const GUEST_ENABLED = import.meta.env.VITE_ENABLE_GUEST === '1';
-
-export async function signInAsGuest() {
-  const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) throw error;
-  if (!data?.session) throw new Error('Anonymous Sign-In выключен в Supabase (Authentication → Sign In / Providers)');
-  return data;
-}
-
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;

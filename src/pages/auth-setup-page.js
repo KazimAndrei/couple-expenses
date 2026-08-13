@@ -1,6 +1,6 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
-import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signInAsGuest, signOut, updateDisplayName, inviteLink, GUEST_ENABLED } from '../lib/supabase.js';
+import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signOut, updateDisplayName, inviteLink } from '../lib/supabase.js';
 import { CURRENCIES, currencyName, currentMonth, escapeHtml, icon } from '../lib/utils.js';
 import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
@@ -46,7 +46,6 @@ export function registerAuthSetupRoutes() {
         <div class="auth-sub">${t('auth.subtitle')}</div>
         <div class="auth-form">
           <button class="btn btn-apple" id="btn-apple">${appleLogo}<span>${t('auth.signInApple')}</span></button>
-          ${GUEST_ENABLED ? `<button class="btn btn-secondary" style="margin-top:12px;" id="btn-guest">${t('auth.signInGuest')}</button>` : ''}
           <div style="display:flex; gap:8px; margin-top:20px;">
             <div class="form-group" style="flex:1; margin:0;">
               <label class="form-label">${t('profile.languageTitle')}</label>
@@ -73,22 +72,6 @@ export function registerAuthSetupRoutes() {
       localStorage.setItem('ce_pending_currency', ev.target.value); // подхватится при создании пары
     });
 
-    document.getElementById('btn-guest')?.addEventListener('click', async () => {
-      const btn = document.getElementById('btn-guest');
-      btn.disabled = true;
-      try {
-        await signInAsGuest();
-        const profile = await getProfile();
-        if (profile?.couple_id) {
-          await enterApp(profile.couples);
-        } else {
-          navigate('/setup');
-        }
-      } catch (err) {
-        showToast(t('common.error', { msg: getReadableError(err) }));
-        btn.disabled = false;
-      }
-    });
 
     document.getElementById('btn-apple').onclick = async () => {
       const btn = document.getElementById('btn-apple');
@@ -245,7 +228,6 @@ export function registerAuthSetupRoutes() {
         return;
       }
 
-      const isGuest = session?.user?.is_anonymous === true;
       updateDisplayName(name).catch(() => { /* имя сохраним и после оплаты */ });
       renderPaywall(app, {
         // Создаём пару прямо здесь: navigate + setTimeout запускали две параллельные
@@ -256,13 +238,7 @@ export function registerAuthSetupRoutes() {
           creating = true;
           try { await doCreateCouple(name); } finally { creating = false; }
         },
-        onClose: () => {
-          if (isGuest) {
-            sessionStorage.setItem(PAID_KEY, '1');
-            showToast(t('paywall.guestSkipped'));
-          }
-          navigate('/setup');
-        },
+        onClose: () => navigate('/setup'),
       });
     };
 

@@ -69,7 +69,6 @@ const ru = {
   // Auth
   'auth.subtitle': 'Совместный учёт расходов<br>для вас двоих',
   'auth.signInApple': 'Войти через Apple',
-  'auth.signInGuest': 'Войти как гость (dev)',
   'auth.signInError': 'Ошибка входа: {msg}',
 
   // Setup
@@ -241,7 +240,6 @@ const ru = {
   'paywall.noProducts': 'Тарифы недоступны, попробуйте позже',
   'paywall.iosOnly': 'Оплата доступна в приложении для iPhone',
   'setup.createdSubtitle': 'Пара создана. Пригласите партнёра — он присоединится бесплатно.',
-  'paywall.guestSkipped': 'Гостевой режим: продолжаем без подписки. Нажмите «Создать пару» ещё раз.',
   'profile.subPremium': 'Премиум активен',
   'profile.subTrial': 'Триал — 7 дней бесплатно',
   'profile.subTrialLeft': 'осталось {days} дн.',
@@ -350,7 +348,6 @@ const en = {
   // Auth
   'auth.subtitle': 'Shared expense tracking<br>for the two of you',
   'auth.signInApple': 'Sign in with Apple',
-  'auth.signInGuest': 'Sign in as guest (dev)',
   'auth.signInError': 'Sign-in error: {msg}',
 
   // Setup
@@ -522,7 +519,6 @@ const en = {
   'paywall.noProducts': 'Plans unavailable, try again later',
   'paywall.iosOnly': 'Purchases are available in the iPhone app',
   'setup.createdSubtitle': 'Couple created. Invite your partner — they join for free.',
-  'paywall.guestSkipped': 'Guest mode: continuing without subscription. Tap "Create a couple" again.',
   'profile.subPremium': 'Premium active',
   'profile.subTrial': 'Free trial — 7 days',
   'profile.subTrialLeft': '{days} days left',
