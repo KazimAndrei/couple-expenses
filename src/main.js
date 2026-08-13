@@ -31,7 +31,11 @@ registerPaywallRoute();
 function renderBootLoader(app) {
   app.innerHTML = `
     <div class="loading boot-splash-wrap">
-      <img class="boot-splash" src="/splash/splash-${1 + Math.floor(Math.random() * BOOT_SPLASH_COUNT)}.jpg" alt="">
+      <div class="boot-brand">
+        <img class="boot-logo" src="/icon-192.png" alt="">
+        <div class="boot-name">CoupleExpenses</div>
+        <div class="boot-spinner"></div>
+      </div>
     </div>
   `;
 }
@@ -85,11 +89,11 @@ function withTimeout(promise, timeoutMs, label) {
 }
 
 // ---- INIT ----
-// Заставка: случайный кадр из public/splash при каждом запуске.
-// 4s при входе в дашборд (залогинен), 2.2s перед экраном логина
-const BOOT_SPLASH_COUNT = 7;
-const BOOT_SPLASH_LOGGED_IN_MS = 4000;
-const BOOT_SPLASH_AUTH_MS = 2200;
+// Минимальная выдержка заставки — только чтобы она не мигала на быстром старте.
+// Прежние 4s и 2.2s держались ради промо-картинки; без неё это просто задержка
+// перед рабочим экраном.
+const BOOT_SPLASH_LOGGED_IN_MS = 600;
+const BOOT_SPLASH_AUTH_MS = 600;
 
 async function init() {
   const app = document.getElementById('app');
