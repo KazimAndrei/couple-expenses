@@ -208,11 +208,11 @@ export function registerProfileRoute() {
               <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="${t('profile.changePhotoAria')}">${icon('settings', 14)}</button>
               <input type="file" id="avatar-input" accept="image/*" style="display:none;">
             </div>
-            <div><div class="profile-name">${e(state.profile.display_name)}</div><div class="profile-email">${state.couple ? t('profile.keyLabel', { code: e(state.couple.invite_code) }) : ''}</div></div>
+            <div><div class="profile-name">${e(state.profile.display_name)}</div></div>
           </div>
           ${state.couple ? `<div class="profile-menu-item" id="sub-status" style="display:none;"></div>` : ''}
           <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>${t('profile.editName')}</span></div>
-          <div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>${t('profile.removePhoto')}</span></div>
+          ${state.profile.avatar_url ? `<div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>${t('profile.removePhoto')}</span></div>` : ''}
           ${state.couple ? `
             <div class="profile-menu-item" id="btn-invite">${icon('heart', 20)}<span>${t('profile.sendInvite')}</span></div>
             <div class="profile-menu-item" id="btn-copy-code">${icon('link', 20)}<span>${t('profile.inviteCodeLabel')} <strong>${e(state.couple.invite_code)}</strong></span></div>

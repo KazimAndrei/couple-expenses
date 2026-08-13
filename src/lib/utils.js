@@ -51,10 +51,23 @@ const formatterCache = {};
 function getFormatter(currency) {
   const key = `${dateLocale()}:${currency}`;
   if (!formatterCache[key]) {
-    formatterCache[key] = new Intl.NumberFormat(dateLocale(), {
-      style: 'decimal',
-      maximumFractionDigits: zeroDecimal.has(currency) ? 0 : 2,
-    });
+    const digits = zeroDecimal.has(currency) ? 0 : 2;
+    let fmt;
+    try {
+      // style:'currency' сам ставит символ по правилам локали: en-US даёт «$1,234.00»,
+      // ru-RU — «1 234 ₽». Раньше символ всегда клеился справа, и в английском UI
+      // суммы выглядели как «128.4 $».
+      fmt = new Intl.NumberFormat(dateLocale(), {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
+    } catch {
+      // Неизвестный ISO-код валюты Intl отвергает — падаем на число без символа
+      fmt = new Intl.NumberFormat(dateLocale(), { style: 'decimal', maximumFractionDigits: digits });
+    }
+    formatterCache[key] = fmt;
   }
   return formatterCache[key];
 }
@@ -80,7 +93,13 @@ export function formatMoney(amount, currency = 'USD') {
   const value = typeof amount === 'string' ? parseFloat(amount) : amount;
   if (!Number.isFinite(value)) return `— ${sym}`;
   // Округление до целых съедало центы; форматтер сам знает, у каких валют дробной части нет
-  return `${getFormatter(currency).format(value)} ${sym}`;
+  return getFormatter(currency).format(value);
+}
+
+// Шаги быстрого ввода суммы. У валют без копеечной части (бат, рубль, иена) единица
+// мелкая — там осмысленны сотни; для доллара и евро «+1000» было бы абсурдом.
+export function quickAmounts(currency = 'USD') {
+  return zeroDecimal.has(currency) ? [100, 500, 1000] : [10, 25, 50];
 }
 
 // ---- Date helpers ----
@@ -114,7 +133,11 @@ export function formatDate(dateStr) {
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   if (d.getTime() === today.getTime()) return t('date.today');
   if (d.getTime() === yesterday.getTime()) return t('date.yesterday');
-  return `${d.getDate()} ${monthShort(d.getMonth())}, ${dayShort(d.getDay())}`;
+  const num = d.getDate();
+  const mon = monthShort(d.getMonth());
+  const weekday = dayShort(d.getDay());
+  // В английском месяц идёт перед числом: «Apr 1, Thu», а не «1 Apr, Thu»
+  return getLang() === 'en' ? `${mon} ${num}, ${weekday}` : `${num} ${mon}, ${weekday}`;
 }
 
 /** Calendar date on each transaction row (DD.MM.YYYY). */
@@ -132,17 +155,20 @@ export function formatDateTime(isoStr) {
   });
 }
 
+// Дата в строке расхода. Порядок частей берём у локали: 31.03.2026 в русском UI
+// и 03/31/2026 в английском — иначе американец читает «04.03.2026» как 3 апреля.
+function rowDate(d) {
+  return d.toLocaleDateString(dateLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 export function formatExpenseDateRow(dateStr) {
   if (dateStr == null || dateStr === '') return '';
-  if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
-    const d = dateStr;
-    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-  }
+  if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) return rowDate(dateStr);
   const raw = String(dateStr);
   const iso = raw.slice(0, 10);
   const d = new Date(`${iso}T12:00:00`);
   if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return rowDate(d);
 }
 
 // Локальная дата, а не UTC: в UTC+7 после полуночи и в UTC-5 вечером

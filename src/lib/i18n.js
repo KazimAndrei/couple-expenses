@@ -207,7 +207,6 @@ const ru = {
   // Profile
   'profile.title': 'Профиль',
   'profile.changePhotoAria': 'Изменить фото',
-  'profile.keyLabel': 'Ключ: {code}',
   'profile.editName': 'Изменить имя',
   'profile.removePhoto': 'Удалить фото',
   'profile.sendInvite': 'Отправить приглашение партнёру',
@@ -486,7 +485,6 @@ const en = {
   // Profile
   'profile.title': 'Profile',
   'profile.changePhotoAria': 'Change photo',
-  'profile.keyLabel': 'Key: {code}',
   'profile.editName': 'Edit name',
   'profile.removePhoto': 'Remove photo',
   'profile.sendInvite': 'Send invite to partner',

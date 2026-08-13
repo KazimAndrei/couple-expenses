@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, formatExpenseDateRow, nextMonth, pct, prevMonth, safeColor } from './utils.js';
+import { escapeHtml, formatExpenseDateRow, formatMoney, nextMonth, pct, prevMonth, safeColor } from './utils.js';
 
 describe('date helpers', () => {
   it('handles year boundaries for prevMonth and nextMonth', () => {
@@ -7,10 +7,27 @@ describe('date helpers', () => {
     expect(nextMonth('2025-12')).toBe('2026-01');
   });
 
-  it('formats expense row date as DD.MM.YYYY', () => {
-    expect(formatExpenseDateRow('2026-03-31')).toBe('31.03.2026');
-    expect(formatExpenseDateRow('2026-03-31T00:00:00.000Z')).toBe('31.03.2026');
+  // Тесты идут без localStorage, поэтому язык — дефолтный английский (en-US)
+  it('formats expense row date in the locale order', () => {
+    expect(formatExpenseDateRow('2026-03-31')).toBe('03/31/2026');
+    expect(formatExpenseDateRow('2026-03-31T00:00:00.000Z')).toBe('03/31/2026');
     expect(formatExpenseDateRow('')).toBe('');
+  });
+});
+
+describe('money formatting', () => {
+  it('puts the currency symbol where the locale wants it and keeps cents', () => {
+    expect(formatMoney(128.4, 'USD')).toBe('$128.40');
+    expect(formatMoney(1234.5, 'EUR')).toBe('€1,234.50');
+  });
+
+  it('drops the fraction for currencies that have none', () => {
+    expect(formatMoney(1234, 'JPY')).toBe('¥1,234');
+  });
+
+  it('survives an unknown currency code instead of throwing', () => {
+    expect(formatMoney(10, 'XYZ')).toContain('10');
+    expect(formatMoney(NaN, 'USD')).toBe('— $');
   });
 });
 

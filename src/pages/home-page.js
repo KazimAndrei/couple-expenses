@@ -2,7 +2,7 @@ import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
-import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, safeColor, todayStr } from '../lib/utils.js';
+import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -89,9 +89,7 @@ async function showAddExpenseModal() {
           <input type="number" class="form-input amount" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01">
         </div>
         <div class="quick-amounts">
-          <button type="button" class="quick-amount" data-add="100">+100</button>
-          <button type="button" class="quick-amount" data-add="500">+500</button>
-          <button type="button" class="quick-amount" data-add="1000">+1000</button>
+          ${quickAmounts(couple?.currency).map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('')}
         </div>
       </div>
       <div class="form-group">

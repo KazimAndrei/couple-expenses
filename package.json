@@ -9,7 +9,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler pages deploy dist"
+    "deploy": "vite build && wrangler pages deploy dist",
+    "build:shot": "SHOT=1 vite build",
+    "verify:release": "node scripts/check-no-shot.mjs"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^10.0.0",

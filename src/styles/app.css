@@ -68,7 +68,9 @@ html, body {
   color: var(--c-text);
   font-size: 16px;
   line-height: 1.5;
-  overflow-x: hidden;
+  /* clip, а не hidden: hidden делает body скролл-контейнером, и в WebKit у всех
+     потомков перестаёт работать position:sticky — шапка уезжала под статус-бар */
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
 }
@@ -361,7 +363,8 @@ select.form-input { cursor:pointer; }
 
 /* Filter bar */
 .filter-bar { display:flex; gap:8px; padding:0 16px; margin-bottom:12px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.filter-sticky { position:sticky; top:70px; z-index:49; background:var(--c-bg); padding-top:4px; }
+/* Прилипает ровно под шапкой: её высота — safe-top + 12 + строка заголовка + 8 */
+.filter-sticky { position:sticky; top:calc(var(--safe-top) + 59px); z-index:49; background:var(--c-bg); padding-top:4px; }
 .filter-chip { display:flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; border:1px solid var(--c-border); background:var(--c-surface); font-size:13px; font-weight:500; color:var(--c-text-secondary); cursor:pointer; white-space:nowrap; transition:all 0.15s; }
 .filter-chip { color:var(--c-text); opacity:0.82; }
 .filter-chip.active { border-color:var(--c-accent); background:var(--c-accent-light); color:var(--c-accent-dark); font-weight:600; opacity:1; }
