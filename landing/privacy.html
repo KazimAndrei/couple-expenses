@@ -20,16 +20,16 @@
 <p class="lang">Обновлено: 10 августа 2026 · English version below</p>
 
 <h2>Какие данные мы собираем</h2>
-<p>При входе через Apple мы получаем ваш идентификатор Apple, имя (если вы разрешили) и e-mail (или приватный relay-адрес Apple). Внутри приложения хранятся данные, которые вы создаёте сами: расходы, доходы, цели, категории, бюджеты, название пары и имя профиля, а также фото профиля, если вы его загрузили.</p>
+<p>При входе через Apple мы получаем ваш идентификатор Apple, имя (если вы разрешили) и e-mail (или приватный relay-адрес Apple). Внутри приложения хранятся данные, которые вы создаёте сами: расходы, доходы, цели, категории, бюджеты, название пары и имя профиля, а также фото чеков и фото профиля, если вы их загрузили.</p>
 
 <h2>Где и как хранятся данные</h2>
-<p>Данные хранятся в базе Supabase (дата-центр AWS, регион Сидней, Австралия) и защищены построчной изоляцией: записи вашей пары видны только двум её участникам. Передача данных шифруется (TLS).</p>
+<p>Данные хранятся в базе Supabase (дата-центр AWS, регион us-east-1, США) и защищены построчной изоляцией: записи вашей пары видны только двум её участникам. Передача данных шифруется (TLS).</p>
 
 <h2>Уведомления</h2>
 <p>Если вы разрешите уведомления, мы храним push-токен устройства, чтобы сообщать партнёру о новых тратах и пополнении общих целей. Токен удаляется при выходе из аккаунта или отзыве разрешения.</p>
 
 <h2>Чего мы не делаем</h2>
-<p>Мы не продаём и не передаём ваши данные третьим лицам, не показываем рекламу и не используем сторонние трекеры и аналитические SDK.</p>
+<p>Мы не продаём ваши данные, не показываем рекламу и не используем сторонние трекеры и аналитические SDK. Обработку за нас выполняют только сервисы, без которых приложение не работает: Supabase — хранение данных; RevenueCat — обработка подписки, ему передаётся ваш идентификатор в приложении и статус покупки; Apple — приём платежа и доставка push-уведомлений. Ни одна из этих компаний не получает ваши данные для рекламы.</p>
 
 <h2>Удаление данных</h2>
 <p>Удалить аккаунт и все свои данные можно прямо в приложении: Профиль → Удалить аккаунт. Также можно написать нам — удалим вручную.</p>
@@ -43,16 +43,16 @@
 <p class="lang">Updated: August 10, 2026</p>
 
 <h2>What we collect</h2>
-<p>When you sign in with Apple we receive your Apple identifier, name (if shared) and e-mail (or Apple's private relay address). The app stores the data you create: expenses, income, goals, categories, budgets, couple name, profile name, and profile photo if you upload one.</p>
+<p>When you sign in with Apple we receive your Apple identifier, name (if shared) and e-mail (or Apple's private relay address). The app stores the data you create: expenses, income, goals, categories, budgets, couple name, profile name, receipt photos, and a profile photo if you upload them.</p>
 
 <h2>Where data is stored</h2>
-<p>Data is stored in Supabase (AWS data center, Sydney, Australia) with row-level isolation: your couple's records are visible only to its two members. All transfers are encrypted (TLS).</p>
+<p>Data is stored in Supabase (AWS data center, us-east-1, United States) with row-level isolation: your couple's records are visible only to its two members. All transfers are encrypted (TLS).</p>
 
 <h2>Notifications</h2>
 <p>If you allow notifications, we store a device push token to notify your partner about new expenses and goal contributions. The token is removed on sign-out or when permission is revoked.</p>
 
 <h2>What we don't do</h2>
-<p>We do not sell or share your data, show ads, or use third-party trackers or analytics SDKs.</p>
+<p>We do not sell your data, show ads, or use third-party trackers or analytics SDKs. Processing is done only by the services the app cannot run without: Supabase stores your data; RevenueCat handles your subscription and receives your in-app user identifier and purchase status; Apple processes the payment and delivers push notifications. None of them receive your data for advertising.</p>
 
 <h2>Data deletion</h2>
 <p>Delete your account and all your data right in the app: Profile → Delete account. You can also email us for manual deletion.</p>

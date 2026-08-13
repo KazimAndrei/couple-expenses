@@ -153,6 +153,8 @@ export async function getPayerTotals() {
 }
 export async function uploadReceipt() { return null; }
 export async function receiptUrl() { return null; }
+export async function avatarUrl(v) { return v || null; }
+export async function uploadAvatar() { return null; }
 export function subscribeToExpenses() { return nullSub; }
 export function subscribeToGoals() { return nullSub; }
 export async function registerPush() {}

@@ -1,6 +1,7 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase } from '../lib/supabase.js';
+import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase, uploadAvatar } from '../lib/supabase.js';
+import { reencodeImage } from '../lib/image.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
 import { coupleHasAccess } from '../services/purchases.js';
@@ -18,62 +19,7 @@ const e = escapeHtml;
 // Подписи темы берём из словаря
 const themeLabel = (pref) => t(`theme.${pref}`);
 
-async function fileToBlob(file) {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = reject;
-      image.src = objectUrl;
-    });
-    const side = Math.min(img.width, img.height);
-    const sx = (img.width - side) / 2;
-    const sy = (img.height - side) / 2;
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-async function fileToDataUrl(file) {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = reject;
-      image.src = objectUrl;
-    });
-    const side = Math.min(img.width, img.height);
-    const sx = (img.width - side) / 2;
-    const sy = (img.height - side) / 2;
-    const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-    return canvas.toDataURL('image/jpeg', 0.85);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-async function uploadAvatarToStorage(file, profileId) {
-  const ext = file.name?.split('.').pop() || 'jpg';
-  const path = `avatars/${profileId}.${ext}`;
-  const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
-  if (uploadErr) throw uploadErr;
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-  return data?.publicUrl ? `${data.publicUrl}?t=${Date.now()}` : null;
-}
+const AVATAR_SIZE = 256;
 
 async function updateAvatar(file, profileId) {
   if (!file) return;
@@ -86,13 +32,12 @@ async function updateAvatar(file, profileId) {
     return;
   }
   try {
-    let avatarUrl;
-    try {
-      avatarUrl = await uploadAvatarToStorage(await fileToBlob(file), profileId);
-    } catch {
-      avatarUrl = await fileToDataUrl(file);
-    }
-    const { error } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', profileId);
+    // Раньше при сбое загрузки картинка сохранялась в колонку как base64 data-URL;
+    // после ограничения avatar_url в 500 символов такой фолбэк молча ронял запись,
+    // поэтому ошибку загрузки теперь показываем честно.
+    const blob = await reencodeImage(file, { maxSide: AVATAR_SIZE, square: true });
+    const path = await uploadAvatar(blob, profileId);
+    const { error } = await supabase.from('profiles').update({ avatar_url: path }).eq('id', profileId);
     if (error) throw error;
     const refreshedProfile = await getProfile();
     const coupleId = refreshedProfile?.couple_id || getState().couple?.id;
@@ -114,6 +59,8 @@ async function updateAvatar(file, profileId) {
 
 async function removeAvatar(profileId) {
   try {
+    // Сначала сам файл: очистка только колонки оставляла картинку лежать в бакете
+    await supabase.storage.from('avatars').remove([`${profileId}/avatar.jpg`]).catch(() => {});
     const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', profileId);
     if (error) throw error;
     const refreshedProfile = await getProfile();

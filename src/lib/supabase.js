@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { t } from './i18n.js';
+import { reencodeImage } from './image.js';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
@@ -109,6 +110,7 @@ export async function getProfile() {
     console.error('getProfile error:', error);
     return null;
   }
+  if (data?.avatar_url) data.avatar_url = await avatarUrl(data.avatar_url);
   return data;
 }
 
@@ -120,7 +122,9 @@ export async function getCoupleMembers(coupleId) {
     .eq('couple_id', coupleId)
     .order('created_at', { ascending: true });
   if (error) { console.error('getCoupleMembers error:', error); return []; }
-  return data || [];
+  return Promise.all((data || []).map(async (m) => (
+    m.avatar_url ? { ...m, avatar_url: await avatarUrl(m.avatar_url) } : m
+  )));
 }
 
 // ---- Couple helpers ----
@@ -387,9 +391,14 @@ export async function fetchAllExpensesForExport(coupleId) {
 }
 
 // ---- Account deletion (App Store 5.1.1v) ----
+// Удаление аккаунта идёт через Edge Function: чеки и аватар лежат в Storage, а его
+// объекты нельзя снести из SQL — DELETE по storage.objects убирает только метаданные
+// и оставляет файл висеть в бакете. Функция чистит файлы service-ключом и уже потом
+// вызывает delete_my_account().
 export async function deleteMyAccount() {
-  const { error } = await supabase.rpc('delete_my_account');
+  const { data, error } = await supabase.functions.invoke('delete-account');
   if (error) throw error;
+  if (data && data.ok === false) throw new Error(data.error || 'delete failed');
   await supabase.auth.signOut().catch(() => { /* сессия уже мертва после удаления */ });
 }
 
@@ -412,9 +421,11 @@ export async function getPayerTotals(coupleId, month) {
 
 // ---- Receipts ----
 export async function uploadReceipt(file, coupleId) {
-  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
-  const path = `${coupleId}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from('receipts').upload(path, file, { contentType: file.type || 'image/jpeg' });
+  // Перекодируем перед отправкой: снимок с камеры несёт EXIF с GPS, и в исходном
+  // виде чек уносил бы на сервер координаты места покупки
+  const blob = await reencodeImage(file);
+  const path = `${coupleId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from('receipts').upload(path, blob, { contentType: 'image/jpeg' });
   if (error) throw error;
   // Храним путь, а не публичную ссылку: бакет приватный, чек виден только своей паре
   return path;
@@ -427,6 +438,23 @@ export async function receiptUrl(pathOrUrl) {
   const { data, error } = await supabase.storage.from('receipts').createSignedUrl(pathOrUrl, 3600);
   if (error) { console.error('receipt url failed:', error); return null; }
   return data?.signedUrl || null;
+}
+
+// Аватар лежит в приватном бакете по пути <user_id>/avatar.jpg: публичной ссылки у него
+// нет, поэтому в profiles.avatar_url хранится путь, а наружу отдаём подписанную ссылку.
+export async function avatarUrl(pathOrUrl) {
+  if (!pathOrUrl) return null;
+  if (pathOrUrl.startsWith('http') || pathOrUrl.startsWith('data:')) return pathOrUrl; // записи прежнего формата
+  const { data, error } = await supabase.storage.from('avatars').createSignedUrl(pathOrUrl, 3600);
+  if (error) { console.error('avatar url failed:', error); return null; }
+  return data?.signedUrl || null;
+}
+
+export async function uploadAvatar(blob, userId) {
+  const path = `${userId}/avatar.jpg`;
+  const { error } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+  if (error) throw error;
+  return path;
 }
 
 // ---- Realtime ----
