@@ -1,6 +1,6 @@
 import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { addCategory, addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
+import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
@@ -9,6 +9,7 @@ import { showToast } from '../services/toast.js';
 import { loadAll, loadExpenses } from '../services/data-loader.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
+import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
 import {
   MISSING_PARTNER_ID,
   expenseJoinedProfileName,
@@ -171,79 +172,34 @@ async function showAddExpenseModal() {
   });
 
   setTimeout(() => document.getElementById('exp-amount')?.focus(), 300);
-  const catColors = ['#EF9F27','#E24B4A','#7F77DD','#378ADD','#D4537E','#1D9E75','#D85A30','#534AB7','#888780','#2BBBAD','#FF6F61','#6B5B95'];
+  const reopenAfterCategoryChange = async (action) => {
+    backdrop.remove();
+    await loadAll();
+    showToast(t(action === 'deleted' ? 'home.categoryDeleted'
+      : action === 'updated' ? 'home.categoryUpdated' : 'home.categoryAdded'));
+    showAddExpenseModal();
+  };
+
   backdrop.querySelector('#btn-add-category')?.addEventListener('click', () => {
-    const catBackdrop = document.createElement('div');
-    catBackdrop.className = 'modal-backdrop';
-    catBackdrop.onclick = (ev) => { if (ev.target === catBackdrop) catBackdrop.remove(); };
-    catBackdrop.innerHTML = `
-      <div class="modal-sheet">
-        <div class="modal-handle"></div>
-        <div class="modal-title">${t('home.newCategory')}</div>
-        <div class="cat-preview">
-          <div class="cat-preview-dot" id="cat-preview-dot" style="background:${catColors[0]}18">${icon(categoryIcons[0], 30, catColors[0])}</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">${t('home.icon')}</label>
-          <div class="icon-grid" id="icon-picker">
-            ${categoryIcons.map((n, i) => `
-              <button type="button" class="icon-pick ${i === 0 ? 'selected' : ''}" data-icon="${n}" aria-label="${n}">${icon(n, 22)}</button>
-            `).join('')}
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">${t('home.color')}</label>
-          <div class="color-row" id="color-picker">
-            ${catColors.map((c, i) => `<button type="button" class="color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" aria-label="${c}"></button>`).join('')}
-          </div>
-        </div>
-        <div class="form-group"><label class="form-label">${t('common.name')}</label><input type="text" class="form-input" id="new-cat-name" placeholder="${t('home.catNamePlaceholder')}" autocomplete="off"></div>
-        <button class="btn btn-primary" id="btn-save-new-cat">${t('common.create')}</button>
-      </div>
-    `;
-    document.body.appendChild(catBackdrop);
-    enableModalSwipe(catBackdrop);
-    // Превью показывает, как категория будет выглядеть в списке
-    const refreshPreview = () => {
-      const ic = catBackdrop.querySelector('#icon-picker .selected')?.dataset.icon || categoryIcons[0];
-      const col = catBackdrop.querySelector('#color-picker .selected')?.dataset.color || catColors[0];
-      const dot = document.getElementById('cat-preview-dot');
-      dot.style.background = col + '18';
-      dot.innerHTML = icon(ic, 30, col);
-    };
-    catBackdrop.querySelectorAll('#icon-picker .icon-pick').forEach(opt => {
-      opt.addEventListener('click', () => {
-        catBackdrop.querySelectorAll('#icon-picker .icon-pick').forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        refreshPreview();
-      });
+    openCategorySheet({
+      coupleId: couple.id,
+      sortOrder: categories.length + 1,
+      onDone: reopenAfterCategoryChange,
     });
-    catBackdrop.querySelectorAll('#color-picker .color-dot').forEach(dot => {
-      dot.addEventListener('click', () => {
-        catBackdrop.querySelectorAll('#color-picker .color-dot').forEach(d => d.classList.remove('selected'));
-        dot.classList.add('selected');
-        refreshPreview();
-      });
-    });
-    document.getElementById('btn-save-new-cat').onclick = async () => {
-      const name = document.getElementById('new-cat-name').value.trim();
-      if (!name) { showToast(t('common.enterTitle')); return; }
-      const selectedIcon = catBackdrop.querySelector('#icon-picker .icon-pick.selected')?.dataset.icon || 'more-horizontal';
-      const selectedColor = catBackdrop.querySelector('#color-picker .color-dot.selected')?.dataset.color || '#888780';
-      try {
-        await addCategory({ couple_id: couple.id, name, icon: selectedIcon, color: selectedColor, sort_order: categories.length + 1 });
-        catBackdrop.remove();
-        backdrop.remove();
-        await loadAll();
-        showToast(t('home.categoryAdded'));
-        showAddExpenseModal();
-      } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
-    };
   });
+
   backdrop.querySelectorAll('.cat-option:not(#btn-add-category)').forEach(opt => {
     opt.addEventListener('click', () => {
+      // После долгого нажатия открылся лист редактирования — обычный выбор не нужен
+      if (opt.dataset.longPressed === '1') { delete opt.dataset.longPressed; return; }
       backdrop.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
+    });
+    // Зажать плитку — переименовать, сменить цвет и значок или удалить категорию
+    attachLongPress(opt, () => {
+      const category = categories.find((c) => c.id === opt.dataset.id);
+      if (!category) return;
+      openCategorySheet({ category, coupleId: couple.id, onDone: reopenAfterCategoryChange });
     });
   });
   backdrop.querySelectorAll('.payer-option').forEach(opt => {

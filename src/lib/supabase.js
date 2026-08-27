@@ -235,6 +235,19 @@ export async function addCategory(category) {
   return data;
 }
 
+export async function updateCategory(id, patch) {
+  const { data, error } = await supabase.from('categories').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Расходы переживают удаление категории: FK стоит ON DELETE SET NULL, они просто
+// остаются без категории. А вот бюджет по ней уходит каскадом — об этом предупреждаем.
+export async function deleteCategory(id) {
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ---- Recurring expense helpers ----
 export async function getRecurringExpenses(coupleId) {
   const { data, error } = await supabase

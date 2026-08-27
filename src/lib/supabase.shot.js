@@ -124,6 +124,8 @@ export async function deleteExpense() {}
 export async function updateExpense(id, patch) { return { ...EXPENSES[0], ...patch }; }
 export async function getCategories() { return CATS; }
 export async function addCategory(category) { return { ...category, id: `c${CATS.length + 1}` }; }
+export async function updateCategory(id, patch) { return { ...CATS[0], ...patch, id }; }
+export async function deleteCategory() {}
 export async function getRecurringExpenses() { return []; }
 export async function createRecurringExpense(tpl) { return { ...tpl, id: 'r1' }; }
 export async function deleteRecurringExpense() {}

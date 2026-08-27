@@ -490,3 +490,7 @@ select.form-input { cursor:pointer; }
 .setup-account-actions { display:flex; justify-content:center; gap:20px; margin:28px auto 0; }
 .setup-account-link { background:none; border:none; cursor:pointer; font-size:14px; font-family:inherit; text-decoration:underline; color:var(--c-text-secondary); padding:8px 4px; }
 .setup-account-link.danger { color:var(--c-danger); }
+
+/* Отклик на удержание плитки категории: подсказывает, что жест что-то делает,
+   до того как откроется лист редактирования. */
+.cat-option.pressing { transform: scale(0.94); opacity: 0.75; transition: transform 0.18s ease, opacity 0.18s ease; }
