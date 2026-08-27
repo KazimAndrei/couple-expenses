@@ -1,6 +1,6 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
-import { deleteMyAccount, fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase, uploadAvatar } from '../lib/supabase.js';
+import { fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase, uploadAvatar } from '../lib/supabase.js';
 import { reencodeImage } from '../lib/image.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
@@ -13,6 +13,7 @@ import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
+import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
 
 const e = escapeHtml;
 
@@ -399,38 +400,7 @@ export function registerProfileRoute() {
         showToast(t('common.error', { msg: getReadableError(err) }));
       }
     });
-    document.getElementById('btn-delete-account')?.addEventListener('click', () => {
-      const backdrop = document.createElement('div');
-      backdrop.className = 'modal-backdrop';
-      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
-      backdrop.innerHTML = `
-        <div class="modal-sheet">
-          <div class="modal-handle"></div>
-          <div class="modal-title">${t('profile.deleteAccount')}</div>
-          <p style="font-size:14px; color:var(--c-text-secondary); margin-bottom:16px;">${t('profile.deleteAccountWarning')}</p>
-          <button class="btn btn-danger" id="btn-confirm-delete">${t('profile.deleteAccountConfirm')}</button>
-          <button class="btn btn-secondary" style="margin-top:8px;" id="btn-cancel-delete">${t('common.cancel')}</button>
-        </div>
-      `;
-      document.body.appendChild(backdrop);
-      enableModalSwipe(backdrop);
-      document.getElementById('btn-cancel-delete').onclick = () => backdrop.remove();
-      document.getElementById('btn-confirm-delete').onclick = async () => {
-        const btn = document.getElementById('btn-confirm-delete');
-        btn.disabled = true;
-        try {
-          await deleteMyAccount();
-          localStorage.clear();
-          setState({ user: null, profile: null, couple: null });
-          navigate('/auth');
-          backdrop.remove();
-          showToast(t('profile.accountDeleted'));
-        } catch (err) {
-          showToast(t('common.error', { msg: getReadableError(err) }));
-          btn.disabled = false;
-        }
-      };
-    });
+    document.getElementById('btn-delete-account')?.addEventListener('click', openDeleteAccountDialog);
     document.getElementById('btn-logout').onclick = async () => {
       const btn = document.getElementById('btn-logout');
       btn.style.opacity = '0.6';

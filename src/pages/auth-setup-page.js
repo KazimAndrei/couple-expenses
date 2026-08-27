@@ -8,6 +8,7 @@ import { getReadableError } from '../services/errors.js';
 import { initNativePush } from '../services/native-push.js';
 import { isPremiumActive, purchasesAvailable } from '../services/purchases.js';
 import { renderPaywall } from './paywall-page.js';
+import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
 import { clearSessionState } from '../services/session-cleanup.js';
 
 const e = escapeHtml;
@@ -133,7 +134,10 @@ export function registerAuthSetupRoutes() {
           ${pendingCode ? `<div class="setup-card" id="btn-create"><h3>${t('setup.createOwnTitle')}</h3><p>${t('setup.createOwnText')}</p></div>` : ''}
         </div>
         <div id="setup-form" style="max-width: 320px; margin: 24px auto 0; display: none;"></div>
-        <button class="paywall-link" id="btn-setup-logout" style="margin: 28px auto 0; display: block; background: none; border: none; color: var(--c-text-secondary); text-decoration: underline; font-size: 14px;">${t('profile.logout')}</button>
+        <div class="setup-account-actions">
+          <button class="setup-account-link" id="btn-setup-logout">${t('profile.logout')}</button>
+          <button class="setup-account-link danger" id="btn-setup-delete">${t('profile.deleteAccount')}</button>
+        </div>
       </div>
     `;
 
@@ -141,6 +145,11 @@ export function registerAuthSetupRoutes() {
     document.getElementById('setup-name').addEventListener('input', (ev) => {
       sessionStorage.setItem('ce_setup_name', ev.target.value.trim());
     });
+
+    // Удаление аккаунта должно быть доступно и здесь: пользователь, который вошёл,
+    // но ещё не создал пару, до профиля не доходит, и другого способа удалиться у него
+    // нет. Именно на этом App Review отклонил сборку 6 по Guideline 5.1.1(v).
+    document.getElementById('btn-setup-delete').onclick = () => openDeleteAccountDialog();
 
     // Выход прямо с экрана настройки: иначе гость без пары заперт на нём
     document.getElementById('btn-setup-logout').onclick = async () => {

@@ -484,3 +484,9 @@ select.form-input { cursor:pointer; }
 .money-flow-legend .dot.spent { background: var(--c-accent); }
 .money-flow-legend .dot.saved { background: #7F77DD; }
 .money-flow-hint { margin-top: 12px; font-size: 13px; color: var(--c-text-secondary); }
+
+/* Выход и удаление аккаунта на экране настройки пары: до создания пары профиль
+   недоступен, поэтому обе операции должны быть доступны прямо здесь. */
+.setup-account-actions { display:flex; justify-content:center; gap:20px; margin:28px auto 0; }
+.setup-account-link { background:none; border:none; cursor:pointer; font-size:14px; font-family:inherit; text-decoration:underline; color:var(--c-text-secondary); padding:8px 4px; }
+.setup-account-link.danger { color:var(--c-danger); }
