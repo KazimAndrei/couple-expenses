@@ -4,7 +4,9 @@ const APNS_KEY_ID = Deno.env.get("APNS_KEY_ID") ?? "";
 const APNS_TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "";
 const APNS_PRIVATE_KEY = Deno.env.get("APNS_PRIVATE_KEY") ?? "";
 const APNS_BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID") ?? "com.kazimandrei.coupleexpenses";
-const APNS_HOST = Deno.env.get("APNS_HOST") ?? "https://api.push.apple.com";
+const PROD_HOST = "https://api.push.apple.com";
+const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
+const host0 = Deno.env.get("APNS_HOST") ?? PROD_HOST;
 // Функция вызывается только триггерами БД. Без этой проверки любой в интернете мог
 // слать POST и заставлять систему рассылать пуши (и жечь вызовы функций).
 const PUSH_SECRET = Deno.env.get("PUSH_FN_SECRET") ?? "";
@@ -77,13 +79,17 @@ async function sendToUsers(db: Db, userIds: string[], localized: Localized, extr
     const { title, body } = localized(lang === "ru" ? "ru" : "en");
     const payload = JSON.stringify({ aps: { alert: { title, body }, sound: "default" }, ...extra });
 
-    let host = APNS_HOST;
+    // Токен привязан к окружению: сборки из Xcode регистрируются в sandbox, из TestFlight
+    // и App Store — в production. Ошибочный хост отвечает BadDeviceToken, поэтому пробуем
+    // второй. Раньше фолбэк был односторонним (только prod → sandbox), и при APNS_HOST,
+    // выставленном в песочницу, боевые токены молча отваливались.
+    const other = host0 === PROD_HOST ? SANDBOX_HOST : PROD_HOST;
+    let host = host0;
     let res = await post(host, token, payload);
     let reason = res.ok ? undefined : (await res.json().catch(() => null))?.reason;
 
-    // Dev-сборки регистрируются в sandbox: prod-эндпоинт отвечает BadDeviceToken — пробуем sandbox
-    if (reason === "BadDeviceToken" && host === "https://api.push.apple.com") {
-      host = "https://api.sandbox.push.apple.com";
+    if (reason === "BadDeviceToken") {
+      host = other;
       res = await post(host, token, payload);
       reason = res.ok ? undefined : (await res.json().catch(() => null))?.reason;
     }

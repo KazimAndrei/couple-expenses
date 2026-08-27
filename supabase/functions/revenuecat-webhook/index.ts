@@ -70,6 +70,28 @@ Deno.serve(async (req: Request) => {
 
   // Пары может ещё не быть: пейволл стоит ДО её создания. Подписку пишем за пользователем,
   // а couple_id проставит триггер couples_link_subscription, когда пара появится.
+  //
+  // На пользователя приходится одна строка, поэтому событие по обычной подписке способно
+  // затереть выданный вручную бессрочный доступ: отменил человек триал — и через неделю
+  // EXPIRATION поставил бы expired поверх lifetime. Промо-грант гасим только событием по
+  // тому же продукту, то есть настоящим отзывом самого гранта.
+  const { data: current } = await db
+    .from("subscriptions")
+    .select("product_id, store, status, expires_at")
+    .eq("owner_id", appUserId)
+    .maybeSingle();
+
+  const lifetimeGrant = current?.store === "PROMOTIONAL"
+    && current?.expires_at === null
+    && current?.status === "active";
+
+  if (lifetimeGrant && current?.product_id !== productId) {
+    return new Response(
+      JSON.stringify({ ok: true, skipped: "lifetime_grant_kept", owner_id: appUserId, type }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const { status, willRenew } = mapStatus(type, expiresAtMs);
   const { error } = await db.from("subscriptions").upsert({
     couple_id: couple?.id ?? null,
