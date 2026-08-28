@@ -494,3 +494,6 @@ select.form-input { cursor:pointer; }
 /* Отклик на удержание плитки категории: подсказывает, что жест что-то делает,
    до того как откроется лист редактирования. */
 .cat-option.pressing { transform: scale(0.94); opacity: 0.75; transition: transform 0.18s ease, opacity 0.18s ease; }
+/* Долгое нажатие по плитке — наш жест, а не выделение текста: без этого iOS
+   показывает поверх него лупу и меню «Скопировать». */
+.cat-option { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }

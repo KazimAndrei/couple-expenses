@@ -152,18 +152,29 @@ export function attachLongPress(el, handler, ms = 500) {
   let timer = null;
   let startX = 0;
   let startY = 0;
+  // Один жест — одно открытие: на десктопе правый клик присылает и pointerdown,
+  // и contextmenu, а WebKit умеет присылать contextmenu ещё и на долгий тап.
+  // Без этого флага лист открывался бы дважды.
+  let fired = false;
 
   const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
 
+  const fire = (ev) => {
+    if (fired) return;
+    fired = true;
+    cancel();
+    el.dataset.longPressed = '1';
+    el.classList.remove('pressing');
+    handler(ev);
+  };
+
   el.addEventListener('pointerdown', (ev) => {
+    // Только основная кнопка: правый клик обслуживается через contextmenu
+    if (ev.button !== 0) return;
+    fired = false;
     startX = ev.clientX; startY = ev.clientY;
     cancel();
-    timer = setTimeout(() => {
-      timer = null;
-      el.dataset.longPressed = '1';
-      el.classList.remove('pressing');
-      handler(ev);
-    }, ms);
+    timer = setTimeout(() => { timer = null; fire(ev); }, ms);
     el.classList.add('pressing');
   });
 
@@ -183,7 +194,6 @@ export function attachLongPress(el, handler, ms = 500) {
   // Правый клик на десктопе — тот же жест
   el.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
-    el.dataset.longPressed = '1';
-    handler(ev);
+    fire(ev);
   });
 }
