@@ -1,6 +1,6 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
-import { createCouple, getProfile, getSession, joinCouple, signInWithApple, signOut, updateDisplayName, inviteLink } from '../lib/supabase.js';
+import { APP_STORE_URL, createCouple, getProfile, getSession, joinCouple, signInWithApple, signOut, updateDisplayName, inviteLink } from '../lib/supabase.js';
 import { CURRENCIES, currencyName, currentMonth, escapeHtml, icon } from '../lib/utils.js';
 import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
@@ -10,6 +10,7 @@ import { isPremiumActive, purchasesAvailable } from '../services/purchases.js';
 import { renderPaywall } from './paywall-page.js';
 import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
 import { clearSessionState } from '../services/session-cleanup.js';
+import { Capacitor } from '@capacitor/core';
 
 const e = escapeHtml;
 const PENDING_INVITE_KEY = 'ce_pending_invite';
@@ -32,11 +33,37 @@ async function enterApp(couple) {
 
 export function registerAuthSetupRoutes() {
   // Инвайт-линк: #/invite?code=XXX — запоминаем код и ведём по флоу
-  route('/invite', async () => {
+  route('/invite', async (app) => {
     const code = getQueryParam('code');
     if (code) localStorage.setItem(PENDING_INVITE_KEY, code);
     const session = await getSession();
-    navigate(session ? '/setup' : '/auth');
+    if (session) { navigate('/setup'); return; }
+
+    // В приложении дальше обычный вход через Apple. А вот в браузере его нет:
+    // веб-версия не может подписать пользователя (нативный Sign in with Apple там
+    // недоступен), поэтому раньше партнёр упирался в нерабочую кнопку. Показываем
+    // ему то, что реально нужно, — код и ссылку на приложение.
+    if (Capacitor.isNativePlatform()) { navigate('/auth'); return; }
+
+    app.innerHTML = `
+      <div class="auth-page page-enter">
+        <div class="auth-logo">${icon('heart', 48, 'var(--c-accent)')}</div>
+        <div class="auth-title">${t('invite.title')}</div>
+        <div class="auth-sub">${t('invite.text')}</div>
+        ${code ? `
+          <div class="form-group" style="max-width:320px; margin:24px auto 0;">
+            <label class="form-label">${t('invite.codeLabel')}</label>
+            <div class="invite-code" id="invite-code-value">${e(code)}</div>
+            <button class="btn btn-secondary btn-small" style="margin-top:8px;" id="btn-copy-invite">${t('common.copy')}</button>
+          </div>
+        ` : ''}
+        <a class="btn btn-primary" style="max-width:320px; margin:24px auto 0; display:block; text-decoration:none;"
+           href="${APP_STORE_URL}" target="_blank" rel="noopener">${t('invite.openAppStore')}</a>
+      </div>
+    `;
+    document.getElementById('btn-copy-invite')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(code).then(() => showToast(t('common.copied'))).catch(() => {});
+    });
   });
 
   route('/auth', async (app) => {

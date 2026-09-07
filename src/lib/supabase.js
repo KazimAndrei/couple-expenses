@@ -7,6 +7,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR_PROJECT.
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
 export const APPLE_APP_BUNDLE_ID = 'com.kazimandrei.coupleexpenses';
 export const WEB_APP_ORIGIN = 'https://couple-expenses.pages.dev';
+export const APP_STORE_URL = 'https://apps.apple.com/app/id6799875708';
 
 // В нативе location.origin — это capacitor://localhost, такую ссылку не отправишь.
 export function inviteLink(code) {
