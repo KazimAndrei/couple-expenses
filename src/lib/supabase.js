@@ -37,8 +37,8 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Native (iOS): ASAuthorization → identity token → signInWithIdToken.
-// Web: обычный OAuth-редирект — страница уходит на Apple и возвращается с сессией.
+// Только iOS: ASAuthorization → identity token → signInWithIdToken.
+// Веба нет как продукта — регистрация возможна лишь в приложении.
 export async function signInWithApple() {
   if (Capacitor.getPlatform() === 'ios') {
     const { SignInWithApple } = await import('@capacitor-community/apple-sign-in');
@@ -74,12 +74,10 @@ export async function signInWithApple() {
     return data;
   }
 
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'apple',
-    options: { redirectTo: window.location.origin },
-  });
-  if (error) throw error;
-  return null; // страница уходит в редирект
+  // Веб-вход не поддерживается: провайдер Apple в Supabase настроен только под
+  // нативный signInWithIdToken, OAuth-секрета у него нет, и authorize отвечает 400.
+  // Продукт замкнут на приложение, поэтому вместо непонятной ошибки говорим прямо.
+  throw new Error(t('auth.appOnly'));
 }
 
 export async function signOut() {

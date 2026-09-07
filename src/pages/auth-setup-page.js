@@ -67,6 +67,22 @@ export function registerAuthSetupRoutes() {
   });
 
   route('/auth', async (app) => {
+    // Продукт живёт в приложении: регистрация возможна только через нативный
+    // Sign in with Apple. В браузере кнопка отвечала 400, поэтому показываем
+    // сразу то, ради чего человек сюда пришёл.
+    if (!Capacitor.isNativePlatform()) {
+      app.innerHTML = `
+        <div class="auth-page page-enter">
+          <div class="auth-logo">${icon('heart', 48, 'var(--c-accent)')}</div>
+          <div class="auth-title">CoupleExpenses</div>
+          <div class="auth-sub">${t('auth.appOnly')}</div>
+          <a class="btn btn-primary" style="max-width:320px; margin:24px auto 0; display:block; text-decoration:none;"
+             href="${APP_STORE_URL}" target="_blank" rel="noopener">${t('invite.openAppStore')}</a>
+        </div>
+      `;
+      return;
+    }
+
     app.innerHTML = `
       <div class="auth-page page-enter" id="auth-content">
         <div class="auth-logo">${icon('heart', 48, 'var(--c-accent)')}</div>
