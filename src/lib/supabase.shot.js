@@ -3,6 +3,7 @@
 // В обычный и релизный бандл не попадает — проверяется скриптом scripts/check-no-shot.mjs.
 export const APPLE_APP_BUNDLE_ID = 'com.kazimandrei.coupleexpenses';
 export const WEB_APP_ORIGIN = 'https://couple-expenses.pages.dev';
+export const APP_STORE_URL = 'https://apps.apple.com/app/id6799875708';
 export function inviteLink(code) { return `${WEB_APP_ORIGIN}/#/invite/${code}`; }
 
 const MONTH = (() => {
