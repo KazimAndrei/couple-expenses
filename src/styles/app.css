@@ -403,6 +403,8 @@ body[data-settled="1"] .page-enter { animation:none; }
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   border-radius: 31%;
+  /* Фолбэк для iOS 15 (color-mix с 16.2): без него вся декларация отбрасывается и плитка пропадает */
+  background: radial-gradient(120% 90% at 20% 0%, rgba(255,255,255,0.38), transparent 55%), var(--cat);
   background:
     radial-gradient(120% 90% at 20% 0%, rgba(255,255,255,0.38), transparent 55%),
     linear-gradient(150deg, color-mix(in srgb, var(--cat) 82%, #fff) 0%, var(--cat) 48%, color-mix(in srgb, var(--cat) 80%, #000) 100%);
@@ -529,7 +531,7 @@ body[data-settled="1"] .page-enter { animation:none; }
 
 /* ---- Лист: общий вид ---- */
 .modal-sheet { border-radius: 26px 26px 0 0; }
-.sheet-footer { position: sticky; bottom: 0; margin: 8px -20px calc(-20px - var(--safe-bottom)); padding: 12px 20px calc(16px + var(--safe-bottom)); background: linear-gradient(to bottom, color-mix(in srgb, var(--c-surface) 0%, transparent), var(--c-surface) 28%); z-index: 3; }
+.sheet-footer { position: sticky; bottom: 0; margin: 8px -20px calc(-20px - var(--safe-bottom)); padding: 12px 20px calc(16px + var(--safe-bottom)); background: var(--c-surface); background: linear-gradient(to bottom, color-mix(in srgb, var(--c-surface) 0%, transparent), var(--c-surface) 28%); z-index: 3; }
 .sheet-footer .btn { box-shadow: 0 10px 24px -12px rgba(15,110,86,0.7); }
 
 /* ---- Ввод суммы ---- */
@@ -547,7 +549,7 @@ body[data-settled="1"] .page-enter { animation:none; }
 .cat-option { display:flex; flex-direction:column; align-items:center; gap:6px; padding:4px 0; border:none; background:none; cursor:pointer; font-size:11.5px; line-height:1.2; color:var(--c-text-secondary); text-align:center; transition: transform 0.15s; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
 .cat-option .cat-tile { transition: box-shadow 0.2s, transform 0.2s var(--ease-spring); }
 .cat-option.selected { color:var(--c-text); font-weight:600; }
-.cat-option.selected .cat-tile { transform: scale(1.06); box-shadow: 0 0 0 2.5px var(--c-surface), 0 0 0 4.5px var(--cat), 0 8px 16px -6px color-mix(in srgb, var(--cat) 70%, transparent); }
+.cat-option.selected .cat-tile { transform: scale(1.06); box-shadow: 0 0 0 2.5px var(--c-surface), 0 0 0 4.5px var(--cat); box-shadow: 0 0 0 2.5px var(--c-surface), 0 0 0 4.5px var(--cat), 0 8px 16px -6px color-mix(in srgb, var(--cat) 70%, transparent); }
 .cat-option:active .cat-tile { transform: scale(0.92); }
 .cat-option.pressing { transform: scale(0.94); opacity: 0.75; transition: transform 0.18s ease, opacity 0.18s ease; }
 .cat-option-add .add-tile { width:46px; height:46px; border-radius:31%; border:2px dashed var(--c-border-strong); display:flex; align-items:center; justify-content:center; color:var(--c-text-muted); }
@@ -632,7 +634,7 @@ body[data-settled="1"] .page-enter { animation:none; }
 .budget-name { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .budget-amounts { font-size:12.5px; color:var(--c-text-secondary); }
 .budget-pct { font-size:13px; font-weight:700; padding:3px 9px; border-radius:999px; background:var(--c-accent-light); color:var(--c-accent-dark); font-variant-numeric: tabular-nums; }
-.budget-pct.warn { background:var(--c-warning-light); color:color-mix(in srgb, var(--c-warning) 70%, var(--c-text)); }
+.budget-pct.warn { background:var(--c-warning-light); color:#b26a00; color:color-mix(in srgb, var(--c-warning) 70%, var(--c-text)); }
 .budget-pct.over { background:var(--c-danger-light); color:var(--c-danger); }
 .budget-track { position:relative; height:8px; background:var(--c-surface-alt); border-radius:999px; }
 .budget-fill { height:100%; border-radius:999px; background:var(--c-accent); transition:width 0.6s var(--ease-spring); }

@@ -15,6 +15,7 @@ import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
+import { setSoundsEnabled, soundAdd, soundsEnabled } from '../services/sounds.js';
 
 const e = escapeHtml;
 
@@ -196,6 +197,7 @@ export function registerProfileRoute() {
           <div class="settings-group">
             ${row('btn-theme', 'moon', '#534ab7', t('profile.theme'), themeLabel(getThemePref()), 'theme-current')}
             ${row('btn-lang', 'globe', '#1d9e75', t('profile.language'), LANG_LABELS[getLang()], 'lang-current')}
+            ${row('btn-sounds', 'music', '#d4537e', t('profile.sounds'), soundsEnabled() ? t('common.on') : t('common.off'), 'sounds-current')}
             ${Capacitor.isNativePlatform() ? row('btn-biometric', 'lock', '#5f5e5a', 'Face ID', isBiometricEnabled() ? t('common.on') : t('common.off'), 'biometric-current') : ''}
             ${state.couple ? row('btn-export-csv', 'download', '#2fbfb3', t('profile.exportCsv')) : ''}
           </div>
@@ -215,6 +217,12 @@ export function registerProfileRoute() {
       </div>
       ${renderTabBar()}
     `;
+    document.getElementById('btn-sounds')?.addEventListener('click', () => {
+      const next = !soundsEnabled();
+      setSoundsEnabled(next);
+      document.getElementById('sounds-current').textContent = next ? t('common.on') : t('common.off');
+      if (next) soundAdd(); // сразу слышно, как звучит
+    });
     document.getElementById('btn-invite-hero')?.addEventListener('click', () => document.getElementById('btn-invite')?.click());
     // Статус подписки: серверная правда через couple_access(), одинаково для владельца и партнёра
     if (state.couple) {

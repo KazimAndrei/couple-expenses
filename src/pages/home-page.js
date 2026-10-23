@@ -4,6 +4,7 @@ import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, d
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, catTile, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
 import { hapticSelect, hapticSuccess, hapticTap } from '../services/haptics.js';
+import { soundAdd, soundCoin, soundDelete } from '../services/sounds.js';
 import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -367,6 +368,7 @@ async function showAddExpenseModal() {
 
     backdrop.remove();
     hapticSuccess();
+    soundAdd();
     showToast(t('home.expenseAdded'), {
       actionLabel: t('common.undo'),
       durationMs: 5000,
@@ -587,6 +589,7 @@ function showExpenseActionsModal(expense, app) {
   document.getElementById('btn-delete-expense').onclick = async () => {
     try {
       await deleteExpense(expense.id);
+      soundDelete();
       backdrop.remove();
       await loadExpenses();
       renderHome(app);
@@ -836,6 +839,7 @@ function renderHome(app) {
         ]);
         setState({ monthlyIncome: newTotal, incomeEntries: entries });
         backdrop.remove();
+        soundCoin();
         renderHome(app);
         showToast(t('home.incomeAdded'));
       } catch (err) {
@@ -877,6 +881,7 @@ function renderHome(app) {
     const expenseData = expenses.find(ex => ex.id === expenseId);
     try {
       await deleteExpense(expenseId);
+      soundDelete();
       await loadExpenses();
       renderHome(app);
       showToast(t('home.deleted'), {

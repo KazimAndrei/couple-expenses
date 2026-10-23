@@ -4,6 +4,7 @@ import { addGoal, addGoalContribution, deleteGoal, getGoals, updateGoal } from '
 import { catTile, escapeHtml, formatDate, formatMoney, icon, moneyHtml, pct } from '../lib/utils.js';
 import { burstConfetti } from '../components/confetti.js';
 import { hapticSuccess, hapticTap } from '../services/haptics.js';
+import { soundCoin, soundSuccess } from '../services/sounds.js';
 
 // Цвет цели берём по порядку из палитры: у целей нет своего цвета в базе,
 // а одинаково зелёные кольца сливались в одно.
@@ -87,9 +88,11 @@ function showGoalActionsModal(goalId) {
         // Цель закрыта этим пополнением — отмечаем праздником, а не обычным тостом
         burstConfetti();
         hapticSuccess();
+        soundSuccess();
         showToast(t('goals.reachedToast', { name: goal.name }));
       } else {
         hapticTap();
+        soundCoin();
         showToast(t('goals.toppedUp'));
       }
       navigate('/goals');

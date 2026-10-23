@@ -6,6 +6,7 @@ import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
+import { soundDelete } from '../services/sounds.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import {
   MISSING_PARTNER_ID,
@@ -341,6 +342,7 @@ export function registerAnalyticsRoute() {
         if (!confirm(t('analytics.confirmDeleteIncome', { amount: amountFmt }))) return;
         try {
           await deleteIncomeEntry(id);
+          soundDelete();
           showToast(t('analytics.incomeDeleted'));
           navigate('/analytics');
         } catch (err) {
