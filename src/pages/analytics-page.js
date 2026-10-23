@@ -1,7 +1,7 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
-import { currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, pct, prevMonth, safeColor } from '../lib/utils.js';
+import { PARTNER_COLORS, catTile, currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, moneyHtml, pct, prevMonth, safeColor } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -137,6 +137,7 @@ export function registerAnalyticsRoute() {
         category_id: categoryId,
         category_name: categoryLabel(expense.categories?.name) || t('common.other'),
         category_color: expense.categories?.color || '#888780',
+        category_icon: expense.categories?.icon || 'more-horizontal',
         total: 0,
       };
       existing.total += parseFloat(expense.amount);
@@ -209,56 +210,110 @@ export function registerAnalyticsRoute() {
             </div>
           ` : `<div class="money-flow-hint">${t('analytics.noIncomeHint')}</div>`}
         </div>` : ''}
-        <div class="stats-grid">
-          <div class="stat-card"><div class="stat-label">${selectedMemberLabel ? t('analytics.totalOf', { name: e(selectedMemberLabel) }) : t('analytics.total')}</div><div class="stat-value">${formatMoney(grandTotal, state.couple.currency)}</div></div>
-          <div class="stat-card"><div class="stat-label">${t('analytics.avgPerDay')}</div><div class="stat-value">${formatMoney(grandTotal / daysForAverage, state.couple.currency)}</div></div>
-          <div class="stat-card"><div class="stat-label">${t('analytics.vsPrevMonth')}</div><div class="stat-value">${trendPct > 0 ? '+' : ''}${trendPct}%</div></div>
-          <div class="stat-card"><div class="stat-label">${t('analytics.topCategory')}</div><div class="stat-value" style="font-size:14px;">${e(topCategory?.category_name || '—')}</div></div>
-          ${payerTotals.map(p => `
-            <div class="stat-card"><div class="stat-label">${t('analytics.paid', { name: e(p.payer_name) })}</div><div class="stat-value">${formatMoney(p.total_paid, state.couple.currency)}</div></div>
-          `).join('')}
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-label">${t('analytics.avgShort')}</div><div class="stat-value">${formatMoney(grandTotal / daysForAverage, state.couple.currency)}</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.vsPrevShort')}</div><div class="stat-value ${prevTotal > 0 ? (trendPct > 0 ? 'up' : trendPct < 0 ? 'down' : '') : ''}">${prevTotal > 0 ? `${trendPct !== 0 ? icon(trendPct > 0 ? 'arrow-up-right' : 'arrow-down-right', 15, 'currentColor', 2.6) : ''}${Math.abs(trendPct)}%` : '—'}</div></div>
+          <div class="stat-card"><div class="stat-label">${t('analytics.txCount')}</div><div class="stat-value">${filteredExpenses.length}</div></div>
         </div>
-        <div class="section-header"><span class="section-title">${t('analytics.incomeSection')}</span></div>
-        <div class="income-entries-analytics" style="padding:0 16px 16px;">
-          ${incomeEntries.length === 0 ? `<div class="empty-state" style="padding:16px 0;"><p style="margin:0;font-size:14px;color:var(--c-text-secondary);">${t('analytics.noIncome')}</p></div>` : incomeEntries.map((ent) => `
-            <div class="income-entry-row" data-income-id="${e(ent.id)}" data-income-amount="${e(String(ent.amount))}" style="display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:10px 0;border-bottom:1px solid var(--c-border);gap:10px;flex-wrap:wrap;">
-              <span style="color:var(--c-text-secondary);">${e(formatDateTime(ent.created_at))}</span>
-              <span style="font-weight:600;">${e(incomeAuthorLabel(ent.created_by))}</span>
-              <span style="display:flex;align-items:center;gap:8px;">
-                <span style="font-weight:600;white-space:nowrap;">${formatMoney(ent.amount, state.couple.currency)}</span>
-                <button class="btn-income-delete" type="button" aria-label="${t('analytics.deleteEntryAria')}" style="background:none;border:none;padding:4px;cursor:pointer;color:var(--c-danger,#e24b4a);display:inline-flex;align-items:center;">${icon('trash-2', 16, 'currentColor')}</button>
-              </span>
+        <div class="card">
+          <div class="card-title"><span>${t('analytics.byCategory')}</span></div>
+          ${sortedCats.length === 0 ? `<div class="empty-state" style="padding:20px 8px;"><p>${t('analytics.noData')}</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button></div>` : `
+          <div class="donut-wrap">
+            <div class="donut">
+              ${(() => {
+                // Кольцо из сегментов: длина дуги = доля категории, между сегментами зазор
+                const r = 80;
+                const c = 2 * Math.PI * r;
+                const gap = sortedCats.length > 1 ? 3 : 0;
+                let offset = 0;
+                const segs = sortedCats.map((cat) => {
+                  const len = Math.max(0, (cat.total / grandTotal) * c - gap);
+                  const seg = `<circle class="seg" r="${r}" cx="100" cy="100" stroke="${safeColor(cat.category_color)}" stroke-dasharray="${len.toFixed(2)} ${(c - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+                  offset += (cat.total / grandTotal) * c;
+                  return seg;
+                }).join('');
+                return `<svg viewBox="0 0 200 200"><circle r="${r}" cx="100" cy="100" stroke="var(--c-surface-alt)"></circle>${segs}</svg>`;
+              })()}
+              <div class="donut-center">
+                <div class="donut-total">${moneyHtml(grandTotal, state.couple.currency)}</div>
+                <div class="donut-sub">${selectedMemberLabel ? e(selectedMemberLabel) : t('analytics.ofMonth')}</div>
+              </div>
             </div>
-          `).join('')}
-        </div>
-        <div class="section-header"><span class="section-title">${t('analytics.byCategory')}</span></div>
-        <div class="cat-bars">
+          </div>
           ${sortedCats.map(c => `
-            <div class="cat-bar-row">
-              <div class="cat-bar-dot" style="background: ${safeColor(c.category_color)}"></div>
-              <div class="cat-bar-name">${e(c.category_name)}</div>
-              <div class="cat-bar-track"><div class="cat-bar-fill" style="width: ${pct(c.total, grandTotal)}%; background: ${safeColor(c.category_color)};"></div></div>
-              <div class="cat-bar-amount">${formatMoney(c.total, state.couple.currency)}</div>
+            <div class="legend-row">
+              ${catTile(c.category_icon, c.category_color, 34)}
+              <div class="legend-main">
+                <div class="legend-top"><span>${e(c.category_name)}</span><span class="legend-amount">${formatMoney(c.total, state.couple.currency)}</span></div>
+                <div class="legend-bar"><i style="width:${pct(c.total, sortedCats[0].total)}%;background:${safeColor(c.category_color)}"></i></div>
+              </div>
+              <div class="legend-pct">${pct(c.total, grandTotal)}%</div>
             </div>
-          `).join('')}
-          ${sortedCats.length === 0 ? `<div class="empty-state"><p>${t('analytics.noData')}</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button></div>` : ''}
+          `).join('')}`}
         </div>
+        ${!filterBy && payerTotals.length === 2 && (payerTotals[0].total_paid + payerTotals[1].total_paid) > 0 ? (() => {
+          const [pa, pb] = payerTotals;
+          const avatarFor = (p, side) => {
+            const m = (members || []).find((x) => x.id === p.id);
+            const url = m?.avatar_url || (m?.id === state.profile?.id ? state.profile?.avatar_url : null);
+            return url ? `<img class="mini-avatar" src="${url}" alt="">` : `<div class="mini-avatar ${side}">${e((p.payer_name || '?')[0])}</div>`;
+          };
+          return `
+        <div class="card">
+          <div class="card-title"><span>${t('analytics.whoPaid')}</span></div>
+          <div class="payers-bar">
+            <i style="flex-grow:${pa.total_paid};background:${PARTNER_COLORS.a}"></i>
+            <i style="flex-grow:${pb.total_paid};background:${PARTNER_COLORS.b}"></i>
+          </div>
+          <div class="payers-legend">
+            <div class="payer-stat">${avatarFor(pa, '')}<div><div class="payer-stat-name">${e(pa.payer_name)} · ${pct(pa.total_paid, pa.total_paid + pb.total_paid)}%</div><div class="payer-stat-sum">${formatMoney(pa.total_paid, state.couple.currency)}</div></div></div>
+            <div class="payer-stat">${avatarFor(pb, 'b')}<div><div class="payer-stat-name">${e(pb.payer_name)} · ${pct(pb.total_paid, pa.total_paid + pb.total_paid)}%</div><div class="payer-stat-sum">${formatMoney(pb.total_paid, state.couple.currency)}</div></div></div>
+          </div>
+        </div>`;
+        })() : ''}
         <div class="section-header"><span class="section-title">${t('analytics.budgets')}</span><button class="section-action" id="btn-add-budget">${t('analytics.addAction')}</button></div>
         <div id="budgets-list">
-          ${budgets.length === 0 ? `<div class="empty-state"><p>${t('analytics.noBudgets')}</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">${t('analytics.addBudget')}</button></div>` : budgets.map(b => {
+          ${budgets.length === 0 ? `<div class="empty-state" style="padding:20px 24px;"><p>${t('analytics.noBudgets')}</p><button class="btn btn-primary" id="btn-empty-add-budget" style="margin-top: 12px; max-width: 240px;">${t('analytics.addBudget')}</button></div>` : budgets.map(b => {
             // Бюджет ставится на пару, поэтому считаем по всем тратам, а не по выбранному участнику
-              const spent = coupleCats.find(c => c.category_id === b.category_id)?.total || 0;
+            const spent = coupleCats.find(c => c.category_id === b.category_id)?.total || 0;
             const percentage = pct(spent, b.limit_amount);
-            const fillClass = percentage > 100 ? 'over' : percentage > 80 ? 'warn' : '';
+            // Цвет — по статусу, а не по категории: красный значит «превышен», а не «рестораны»
+            const status = percentage > 100 ? 'over' : percentage >= 80 ? 'warn' : '';
+            const left = b.limit_amount - spent;
+            const pace = isCurrentMonth ? Math.round((now.getDate() / new Date(avgY, avgM, 0).getDate()) * 100) : null;
             return `
               <div class="budget-card" data-budget-id="${b.id}">
                 <div class="budget-header">
-                  <div class="budget-name"><span style="color: ${safeColor(b.categories?.color)}">${icon(b.categories?.icon || 'more-horizontal', 16, safeColor(b.categories?.color))}</span>${e(categoryLabel(b.categories?.name) || t('analytics.categoryFallback'))}</div>
-                  <div class="budget-amounts">${formatMoney(spent, state.couple.currency)} / ${formatMoney(b.limit_amount, state.couple.currency)}</div>
+                  ${catTile(b.categories?.icon || 'more-horizontal', b.categories?.color || '#888780', 36)}
+                  <div class="budget-main">
+                    <div class="budget-name">${e(categoryLabel(b.categories?.name) || t('analytics.categoryFallback'))}</div>
+                    <div class="budget-amounts">${formatMoney(spent, state.couple.currency)} / ${formatMoney(b.limit_amount, state.couple.currency)}</div>
+                  </div>
+                  <div class="budget-pct ${status}">${percentage}%</div>
                 </div>
-                <div class="budget-track"><div class="budget-fill ${fillClass}" style="width: ${Math.min(percentage, 100)}%; background: ${!fillClass ? safeColor(b.categories?.color || '#1d9e75') : ''};"></div></div>
-                <div class="budget-pct">${t('analytics.pctUsed', { pct: percentage })}</div>
+                <div class="budget-track">
+                  <div class="budget-fill ${status}" style="width:${Math.min(percentage, 100)}%"></div>
+                  ${pace !== null ? `<div class="budget-pace" style="left:calc(${pace}% - 1px)"></div>` : ''}
+                </div>
+                <div class="budget-foot"><span>${left >= 0 ? t('analytics.leftAmount', { amount: formatMoney(left, state.couple.currency) }) : t('analytics.overAmount', { amount: formatMoney(-left, state.couple.currency) })}</span></div>
               </div>`;
+          }).join('')}
+        </div>
+        <div class="section-header"><span class="section-title">${t('analytics.incomeSection')}</span></div>
+        <div class="card income-entries-analytics" style="padding:6px 16px;">
+          ${incomeEntries.length === 0 ? `<div style="padding:12px 0;font-size:14px;color:var(--c-text-secondary);">${t('analytics.noIncome')}</div>` : incomeEntries.map((ent) => {
+            const who = incomeAuthorLabel(ent.created_by);
+            const side = ent.created_by === memberB?.id ? 'b' : '';
+            return `
+            <div class="income-entry income-entry-row" data-income-id="${e(ent.id)}" data-income-amount="${e(String(ent.amount))}">
+              <div class="mini-avatar ${side}">${e((who || '?')[0])}</div>
+              <div class="income-entry-main">
+                <div class="income-entry-who">${e(who)}</div>
+                <div class="income-entry-date">${e(formatDateTime(ent.created_at))}</div>
+              </div>
+              <div class="income-entry-amount">+${formatMoney(ent.amount, state.couple.currency)}</div>
+              <button class="btn-income-delete" type="button" aria-label="${t('analytics.deleteEntryAria')}">${icon('trash-2', 17, 'currentColor')}</button>
+            </div>`;
           }).join('')}
         </div>
       </div>

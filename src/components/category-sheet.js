@@ -1,5 +1,5 @@
 import { addCategory, updateCategory, deleteCategory } from '../lib/supabase.js';
-import { categoryIcons, escapeHtml, icon, safeColor } from '../lib/utils.js';
+import { catTile, categoryIcons, escapeHtml, icon, safeColor } from '../lib/utils.js';
 import { categoryLabel, t } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -37,7 +37,7 @@ export function openCategorySheet({ category = null, coupleId, sortOrder = 1, on
       <div class="modal-handle"></div>
       <div class="modal-title">${editing ? t('home.editCategory') : t('home.newCategory')}</div>
       <div class="cat-preview">
-        <div class="cat-preview-dot" id="cat-preview-dot" style="background:${startColor}18">${icon(startIcon, 30, startColor)}</div>
+        <div id="cat-preview-dot">${catTile(startIcon, startColor, 68)}</div>
       </div>
       <div class="form-group">
         <label class="form-label">${t('home.icon')}</label>
@@ -70,8 +70,7 @@ export function openCategorySheet({ category = null, coupleId, sortOrder = 1, on
   const refreshPreview = () => {
     const dot = backdrop.querySelector('#cat-preview-dot');
     const col = pickedColor();
-    dot.style.background = `${col}18`;
-    dot.innerHTML = icon(pickedIcon(), 30, col);
+    dot.innerHTML = catTile(pickedIcon(), col, 68);
   };
 
   backdrop.querySelectorAll('#icon-picker .icon-pick').forEach((opt) => {

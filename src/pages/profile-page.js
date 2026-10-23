@@ -7,7 +7,8 @@ import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '.
 import { coupleHasAccess } from '../services/purchases.js';
 import { clearSessionState } from '../services/session-cleanup.js';
 import { Capacitor } from '@capacitor/core';
-import { CURRENCIES, currencyName, escapeHtml, icon } from '../lib/utils.js';
+import { CURRENCIES, catTile, currencyName, escapeHtml, icon } from '../lib/utils.js';
+import { memberDisplayLabel, resolveMemberSides } from '../lib/member-filters.js';
 import { LANG_LABELS, categoryLabel, getLang, setLang, t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -142,45 +143,79 @@ export function registerProfileRoute() {
   route('/profile', async (app) => {
     const state = getState();
     if (!state.profile) { navigate('/auth'); return; }
-    const initials = (state.profile.display_name || 'U').slice(0, 2).toUpperCase();
-    const avatarMarkup = state.profile.avatar_url
-      ? `<img src="${e(state.profile.avatar_url)}" class="profile-avatar image" alt="avatar">`
-      : `<div class="profile-avatar">${initials}</div>`;
+    const me = state.profile;
+    const partner = (state.members || []).find((m) => m.id !== me.id) || null;
+    const sides = resolveMemberSides(state.members || []);
+    const mySide = sides.memberB?.id === me.id ? 'b' : '';
+    const partnerSide = mySide ? '' : 'b';
+    const initial = (name) => e(((name || '').trim()[0] || '?').toUpperCase());
+    const myAvatar = me.avatar_url
+      ? `<img src="${e(me.avatar_url)}" class="avatar-lg ${mySide}" alt="">`
+      : `<div class="avatar-lg ${mySide}">${initial(me.display_name)}</div>`;
+    const partnerAvatar = partner
+      ? (partner.avatar_url
+        ? `<img src="${e(partner.avatar_url)}" class="avatar-lg ${partnerSide}" alt="">`
+        : `<div class="avatar-lg ${partnerSide}">${initial(memberDisplayLabel(partner))}</div>`)
+      : `<div class="avatar-lg ${partnerSide} empty">${icon('plus', 26)}</div>`;
+    // Строка настроек в стиле iOS: цветная плитка, подпись, значение справа, шеврон
+    const row = (id, iconName, color, label, value = '', valueId = '') => `
+      <div class="profile-menu-item" id="${id}">
+        ${catTile(iconName, color, 30)}
+        <span class="row-label">${label}</span>
+        ${value || valueId ? `<span class="row-value"${valueId ? ` id="${valueId}"` : ''}>${value}</span>` : ''}
+        <span class="row-chevron">${icon('chevron-right', 16)}</span>
+      </div>`;
     app.innerHTML = `
       <div class="page-enter">
         <div class="header"><div class="header-title">${t('profile.title')}</div></div>
         <div class="profile-section">
-          <div class="profile-card">
-            <div class="profile-avatar-wrap">
-              ${avatarMarkup}
-              <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="${t('profile.changePhotoAria')}">${icon('settings', 14)}</button>
-              <input type="file" id="avatar-input" accept="image/*" style="display:none;">
+          <div class="couple-card">
+            <div class="couple-avatars">
+              <div class="avatar-me">
+                ${myAvatar}
+                <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="${t('profile.changePhotoAria')}">${icon('camera', 13, 'currentColor', 2.4)}</button>
+                <input type="file" id="avatar-input" accept="image/*" style="display:none;">
+              </div>
+              ${state.couple ? `<div class="couple-heart">${icon('heart', 15, '#e8735a', 2.6)}</div>${partnerAvatar}` : ''}
             </div>
-            <div><div class="profile-name">${e(state.profile.display_name)}</div></div>
+            <div class="couple-names">${e(me.display_name || '')}${partner ? ` &amp; ${e(memberDisplayLabel(partner))}` : ''}</div>
+            ${state.couple ? `<div class="couple-sub">${partner ? e(state.couple.name || '') : t('profile.waitingPartner')}</div>` : ''}
+            ${state.couple && !partner ? `<button class="btn btn-primary btn-small" id="btn-invite-hero">${t('profile.inviteShort')}</button>` : ''}
           </div>
-          ${state.couple ? `<div class="profile-menu-item" id="sub-status" style="display:none;"></div>` : ''}
-          <div class="profile-menu-item" id="btn-edit-name">${icon('user', 20)}<span>${t('profile.editName')}</span></div>
-          ${state.profile.avatar_url ? `<div class="profile-menu-item" id="btn-remove-avatar">${icon('x', 20)}<span>${t('profile.removePhoto')}</span></div>` : ''}
+
           ${state.couple ? `
-            <div class="profile-menu-item" id="btn-invite">${icon('heart', 20)}<span>${t('profile.sendInvite')}</span></div>
-            <div class="profile-menu-item" id="btn-copy-code">${icon('link', 20)}<span>${t('profile.inviteCodeLabel')} <strong>${e(state.couple.invite_code)}</strong></span></div>
-            <div class="profile-menu-item" id="btn-settings">${icon('settings', 20)}<span>${t('profile.coupleSettings')}</span></div>
-          ` : ''}
-          ${state.couple ? `
-            <div class="profile-menu-item" id="btn-currency">${icon('credit-card', 20)}<span>${t('profile.currencyLabel')} <strong id="currency-current">${CURRENCIES[state.couple.currency]?.[0] || ''} ${e(state.couple.currency)}</strong></span></div>
-          ` : ''}
-          <div class="profile-menu-item" id="btn-theme">${icon('moon', 20)}<span>${t('profile.themeLabel')} <strong id="theme-current">${themeLabel(getThemePref())}</strong></span></div>
-          <div class="profile-menu-item" id="btn-lang">${icon('globe', 20)}<span>${t('profile.languageLabel')} <strong id="lang-current">${LANG_LABELS[getLang()]}</strong></span></div>
-          ${Capacitor.isNativePlatform() ? `
-            <div class="profile-menu-item" id="btn-biometric">${icon('lock', 20)}<span>${t('profile.biometricLabel')} <strong id="biometric-current">${isBiometricEnabled() ? t('common.on') : t('common.off')}</strong></span></div>
-          ` : ''}
-          ${state.couple ? `<div class="profile-menu-item" id="btn-export-csv">${icon('copy', 20)}<span>${t('profile.exportCsv')}</span></div>` : ''}
-          <div class="profile-menu-item danger" id="btn-logout">${icon('log-out', 20)}<span>${t('profile.logout')}</span></div>
-          <div class="profile-menu-item danger" id="btn-delete-account">${icon('x', 20)}<span>${t('profile.deleteAccount')}</span></div>
+          <div class="settings-group-title">${t('profile.sectionCouple')}</div>
+          <div class="settings-group">
+            ${row('btn-invite', 'share', '#e8735a', t('profile.inviteShort'))}
+            ${row('btn-copy-code', 'link', '#7f77dd', t('profile.inviteCode'), e(state.couple.invite_code))}
+            ${row('btn-settings', 'users', '#378add', t('profile.coupleSettings'))}
+            ${row('btn-currency', 'coins', '#ef9f27', t('profile.currency'), `${e(CURRENCIES[state.couple.currency]?.[0] || '')} ${e(state.couple.currency)}`, 'currency-current')}
+          </div>` : ''}
+
+          <div class="settings-group-title">${t('profile.sectionApp')}</div>
+          <div class="settings-group">
+            ${row('btn-theme', 'moon', '#534ab7', t('profile.theme'), themeLabel(getThemePref()), 'theme-current')}
+            ${row('btn-lang', 'globe', '#1d9e75', t('profile.language'), LANG_LABELS[getLang()], 'lang-current')}
+            ${Capacitor.isNativePlatform() ? row('btn-biometric', 'lock', '#5f5e5a', 'Face ID', isBiometricEnabled() ? t('common.on') : t('common.off'), 'biometric-current') : ''}
+            ${state.couple ? row('btn-export-csv', 'download', '#2fbfb3', t('profile.exportCsv')) : ''}
+          </div>
+
+          <div class="settings-group-title">${t('profile.sectionAccount')}</div>
+          <div class="settings-group">
+            ${state.couple ? `<div class="profile-menu-item" id="sub-status" style="display:none;"></div>` : ''}
+            ${row('btn-edit-name', 'edit', '#888780', t('profile.editName'), e(me.display_name || ''))}
+            ${me.avatar_url ? row('btn-remove-avatar', 'image', '#888780', t('profile.removePhoto')) : ''}
+          </div>
+
+          <div class="settings-group">
+            <div class="profile-menu-item danger" id="btn-logout">${t('profile.logout')}</div>
+            <div class="profile-menu-item danger" id="btn-delete-account">${t('profile.deleteAccount')}</div>
+          </div>
         </div>
       </div>
       ${renderTabBar()}
     `;
+    document.getElementById('btn-invite-hero')?.addEventListener('click', () => document.getElementById('btn-invite')?.click());
     // Статус подписки: серверная правда через couple_access(), одинаково для владельца и партнёра
     if (state.couple) {
       coupleHasAccess().then((acc) => {
@@ -209,7 +244,7 @@ export function registerProfileRoute() {
         if (acc.has_access && acc.is_owner === false) {
           detail = detail ? `${detail} · ${t('profile.subPaidByPartner')}` : t('profile.subPaidByPartner');
         }
-        el.innerHTML = `${icon('star', 20)}<span>${e(title)}${detail ? ` <strong>${e(detail)}</strong>` : ''}</span>`;
+        el.innerHTML = `${catTile('star', acc.has_access ? '#ef9f27' : '#e24b4a', 30)}<span class="row-label">${e(title)}${detail ? `<span class="row-detail">${e(detail)}</span>` : ''}</span>`;
         el.style.display = '';
       }).catch(() => { /* нет данных — строку не показываем */ });
     }

@@ -3,6 +3,8 @@ import { t } from './i18n.js';
 
 const routes = {};
 let currentCleanup = null;
+let lastRenderedPath = null;
+let settleTimer = null;
 
 export function route(path, handler) {
   routes[path] = handler;
@@ -37,9 +39,20 @@ async function handleRoute() {
     currentCleanup = null;
   }
   const handler = routes[path] || routes['/'];
+  // Новый экран открываем сверху: иначе вкладка наследовала прокрутку предыдущей
+  // и аналитика открывалась где-то на бюджетах. Перерисовка того же экрана позицию сохраняет.
+  // Анимация появления — только при входе на экран. Перерисовка того же экрана (поиск,
+  // добавление траты, фильтр) не должна заново «проявлять» всю страницу.
+  const isNewScreen = path !== lastRenderedPath;
+  if (isNewScreen) window.scrollTo(0, 0);
+  lastRenderedPath = path;
+  clearTimeout(settleTimer);
+  document.body.dataset.settled = isNewScreen ? '0' : '1';
+
   try {
     if (handler) {
       const cleanup = await handler(app);
+      if (isNewScreen) settleTimer = setTimeout(() => { document.body.dataset.settled = '1'; }, 400);
       if (typeof cleanup === 'function') {
         currentCleanup = cleanup;
       }

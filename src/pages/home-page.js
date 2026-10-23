@@ -2,7 +2,8 @@ import { route, navigate, getCurrentPath } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
-import { CURRENCIES, availableIcons, categoryIcons, currentMonth, escapeHtml, formatDate, formatDateTime, formatExpenseDateRow, formatMoney, formatMonth, groupByDate, icon, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
+import { CURRENCIES, catTile, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
+import { hapticSelect, hapticSuccess, hapticTap } from '../services/haptics.js';
 import { t, categoryLabel } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
@@ -19,6 +20,7 @@ import {
   resolvePayerLabel,
   resolvePayerSide,
 } from '../lib/member-filters.js';
+
 
 const e = escapeHtml;
 let realtimeChannel = null;
@@ -79,38 +81,33 @@ async function showAddExpenseModal() {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
+  const sideOf = (memberId) => (memberId === sides.memberB?.id ? 'b' : 'a');
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
       <div class="modal-title">${t('home.newExpense')}</div>
-      <div class="form-group">
-        <label class="form-label">${t('common.amount')}</label>
-        <div class="amount-input-wrap">
-          <span class="amount-currency">${currSymbol}</span>
-          <input type="number" class="form-input amount" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01">
-        </div>
-        <div class="quick-amounts">
-          ${quickAmounts(couple?.currency).map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('')}
-        </div>
+      <label class="amount-hero" for="exp-amount">
+        <span class="amount-currency">${e(currSymbol)}</span>
+        <input type="number" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01" aria-label="${t('common.amount')}">
+      </label>
+      <div class="quick-amounts">
+        ${quickAmounts(couple?.currency).map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('')}
       </div>
       <div class="form-group">
-        <label class="form-label">${t('home.description')}</label>
-        <input type="text" class="form-input" id="exp-desc" placeholder="${t('home.descPlaceholder')}" autocomplete="off">
+        <input type="text" class="form-input" id="exp-desc" placeholder="${t('home.descPlaceholder')}" autocomplete="off" aria-label="${t('home.description')}">
       </div>
       <div class="form-group">
         <label class="form-label">${t('common.category')}</label>
         <div class="cat-grid" id="cat-grid">
           ${categories.map((c, i) => `
             <div class="cat-option ${c.id === defaultCategoryId || (i === 0 && !defaultCategoryId) ? 'selected' : ''}" data-id="${c.id}">
-              <div class="cat-dot" style="background: ${safeColor(c.color)}20">
-                ${icon(c.icon, 16, safeColor(c.color))}
-              </div>
-              ${e(categoryLabel(c.name))}
+              ${catTile(c.icon, c.color, 46)}
+              <span class="cat-name">${e(categoryLabel(c.name))}</span>
             </div>
           `).join('')}
           <div class="cat-option cat-option-add" id="btn-add-category">
-            <div class="cat-dot" style="background:var(--c-surface-alt)">${icon('plus', 16, 'var(--c-text-muted)')}</div>
-            ${t('common.add')}
+            <span class="add-tile">${icon('plus', 20)}</span>
+            <span class="cat-name">${t('common.add')}</span>
           </div>
         </div>
       </div>
@@ -125,9 +122,9 @@ async function showAddExpenseModal() {
       ` : ''}
       <div class="form-group">
         <label class="form-label">${t('home.whoPays')}</label>
-        <div class="payer-options" style="flex-wrap:wrap;">
+        <div class="payer-options">
           <div class="payer-option ${!defaultPayerId || defaultPayerId === 'shared' ? 'selected' : ''}" data-id="shared">
-            <div class="payer-avatar payer-avatar-initials" style="background:var(--c-accent-dark);">${icon('heart', 14, '#fff')}</div><span>${t('common.shared')}</span>
+            <div class="payer-avatar payer-avatar-initials shared">${icon('heart', 13, '#fff', 2.4)}</div><span>${t('common.shared')}</span>
           </div>
           ${payerMembers.map((m) => {
             const label = memberDisplayLabel(m);
@@ -136,39 +133,59 @@ async function showAddExpenseModal() {
           <div class="payer-option ${defaultPayerId === m.id ? 'selected' : ''}" data-id="${m.id}">
             ${avatarUrl
               ? `<img src="${avatarUrl}" class="payer-avatar" alt="">`
-              : `<div class="payer-avatar payer-avatar-initials">${e(label[0] || '')}</div>`}<span>${e(label)}</span>
+              : `<div class="payer-avatar payer-avatar-initials ${sideOf(m.id)}">${e(label[0] || '')}</div>`}<span>${e(label)}</span>
           </div>`;
           }).join('')}
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">${t('common.date')}</label>
-        <input type="date" class="form-input" id="exp-date" value="${defaultDate}">
-      </div>
-      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
-        <button type="button" class="btn btn-secondary btn-small" id="btn-attach-receipt">${t('home.attachReceipt')}</button>
-        <span id="receipt-name" style="font-size:12px; color:var(--c-text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+      <div class="form-group meta-chips">
+        <label class="meta-chip" id="date-chip">
+          ${icon('calendar', 16)}<span id="date-chip-label">${e(formatDate(defaultDate))}</span>
+          <input type="date" id="exp-date" value="${defaultDate}" aria-label="${t('common.date')}">
+        </label>
+        <button type="button" class="meta-chip" id="btn-attach-receipt">${icon('camera', 16)}<span id="receipt-name">${t('home.receipt')}</span></button>
         <input type="file" id="receipt-input" accept="image/*" style="display:none;">
-      </div>
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
+        <label class="meta-chip" id="recurring-chip">
           <input type="checkbox" id="exp-recurring">
-          ${t('home.makeRecurring')}
+          ${icon('repeat', 16)}<span>${t('home.repeatShort')}</span>
         </label>
       </div>
-      <button class="btn btn-primary" id="btn-save-exp" style="margin-top: 8px;">${t('common.add')}</button>
+      <div class="sheet-footer">
+        <button class="btn btn-primary" id="btn-save-exp">${t('common.add')}</button>
+      </div>
     </div>
   `;
   document.body.appendChild(backdrop);
   enableModalSwipe(backdrop);
   const amountInput = document.getElementById('exp-amount');
 
+  // Поле суммы растёт по ширине числа, чтобы символ валюты стоял вплотную к нему
+  const fitAmount = () => {
+    const len = Math.max(1, (amountInput.value || amountInput.placeholder || '0').length);
+    amountInput.style.width = `${len + 0.4}ch`;
+  };
+  amountInput.addEventListener('input', fitAmount);
+  fitAmount();
+
   backdrop.querySelectorAll('.quick-amount').forEach((btn) => {
     btn.addEventListener('click', () => {
       const add = Number(btn.dataset.add || 0);
       const current = parseFloat(amountInput?.value || '0') || 0;
-      amountInput.value = String(current + add);
+      amountInput.value = String(Math.round((current + add) * 100) / 100);
+      fitAmount();
+      hapticTap();
     });
+  });
+
+  const dateInput = document.getElementById('exp-date');
+  dateInput.addEventListener('change', () => {
+    document.getElementById('date-chip-label').textContent = dateInput.value ? formatDate(dateInput.value) : t('common.date');
+    document.getElementById('date-chip').classList.toggle('on', !!dateInput.value && dateInput.value !== defaultDate);
+  });
+  const recurringInput = document.getElementById('exp-recurring');
+  recurringInput.addEventListener('change', () => {
+    document.getElementById('recurring-chip').classList.toggle('on', recurringInput.checked);
+    hapticSelect();
   });
 
   setTimeout(() => document.getElementById('exp-amount')?.focus(), 300);
@@ -194,6 +211,7 @@ async function showAddExpenseModal() {
       if (opt.dataset.longPressed === '1') { delete opt.dataset.longPressed; return; }
       backdrop.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
+      hapticSelect();
     });
     // Зажать плитку — переименовать, сменить цвет и значок или удалить категорию
     attachLongPress(opt, () => {
@@ -206,6 +224,7 @@ async function showAddExpenseModal() {
     opt.addEventListener('click', () => {
       backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
+      hapticSelect();
     });
   });
 
@@ -213,7 +232,8 @@ async function showAddExpenseModal() {
   document.getElementById('btn-attach-receipt').addEventListener('click', () => receiptInput.click());
   receiptInput.addEventListener('change', () => {
     const f = receiptInput.files?.[0];
-    document.getElementById('receipt-name').textContent = f ? t('home.receiptAttached', { name: f.name }) : '';
+    document.getElementById('receipt-name').textContent = f ? t('home.receiptShort') : t('home.receipt');
+    document.getElementById('btn-attach-receipt').classList.toggle('on', !!f);
   });
 
   const goalSelect = document.getElementById('exp-goal');
@@ -346,6 +366,7 @@ async function showAddExpenseModal() {
     }
 
     backdrop.remove();
+    hapticSuccess();
     showToast(t('home.expenseAdded'), {
       actionLabel: t('common.undo'),
       durationMs: 5000,
@@ -367,8 +388,12 @@ async function showAddExpenseModal() {
     }
     try {
       await loadExpenses();
-      if (getCurrentPath() === '/') {
+      const path = getCurrentPath();
+      if (path === '/') {
         renderHome(document.getElementById('app'));
+      } else if (path === '/analytics' || (path === '/goals' && goalId)) {
+        // «+» доступна с любого экрана — экран, который показывает эту трату, перерисовываем
+        navigate(path);
       }
     } catch {
       // optimistic insert уже показал расход; перезагрузка случится при следующем переходе/realtime
@@ -439,14 +464,23 @@ function showExpenseActionsModal(expense, app) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
+  const sheetCat = expense.categories;
+  const sheetPayer = resolvePayerLabel(expense, resolveMemberSides(members));
   backdrop.innerHTML = `
     <div class="modal-sheet">
       <div class="modal-handle"></div>
-      <div class="modal-title">${e(expense.description)}</div>
-      ${expense.receipt_url ? `<button class="btn btn-secondary" id="btn-view-receipt" style="margin-bottom: 8px;">${t('home.viewReceipt')}</button>` : ''}
-      <button class="btn btn-secondary" id="btn-edit-expense">${t('common.edit')}</button>
-      <button class="btn btn-secondary" id="btn-duplicate-expense" style="margin-top: 8px;">${t('home.duplicate')}</button>
-      <button class="btn btn-danger" id="btn-delete-expense" style="margin-top: 8px;">${t('common.delete')}</button>
+      <div class="expense-sheet-head">
+        ${catTile(sheetCat?.icon || 'more-horizontal', sheetCat?.color || '#888780', 56)}
+        <div class="expense-sheet-amount num">${moneyHtml(expense.amount, expense.currency)}</div>
+        <div class="modal-title" style="margin:0;">${e(expense.description)}</div>
+        <div class="expense-sheet-meta">${e(categoryLabel(sheetCat?.name) || t('common.other'))} · ${e(formatDate(expense.expense_date))} · ${e(sheetPayer)}</div>
+      </div>
+      <div class="action-list">
+        ${expense.receipt_url ? `<button class="action-row" id="btn-view-receipt">${icon('image', 20)}${t('home.viewReceipt')}</button>` : ''}
+        <button class="action-row" id="btn-edit-expense">${icon('edit', 20)}${t('common.edit')}</button>
+        <button class="action-row" id="btn-duplicate-expense">${icon('copy', 20)}${t('home.duplicate')}</button>
+        <button class="action-row danger" id="btn-delete-expense">${icon('trash-2', 20)}${t('common.delete')}</button>
+      </div>
     </div>
   `;
   document.body.appendChild(backdrop);
@@ -563,6 +597,31 @@ function showExpenseActionsModal(expense, app) {
   };
 }
 
+// Итог месяца «досчитывается» от прошлого показанного значения — при добавлении траты
+// видно, как сумма выросла. Только при реальном изменении, не на каждый перерендер.
+let lastHeroTotal = null;
+let lastHeroKey = null;
+function animateHeroTotal(currency) {
+  const el = document.getElementById('hero-total');
+  if (!el) return;
+  const target = Number(el.dataset.value) || 0;
+  const key = `${getState().currentMonth}|${getState().filterBy || ''}`;
+  const from = lastHeroKey === key && lastHeroTotal !== null ? lastHeroTotal : 0;
+  lastHeroTotal = target;
+  lastHeroKey = key;
+  if (from === target || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const started = performance.now();
+  const duration = 650;
+  const step = (now) => {
+    const k = Math.min(1, (now - started) / duration);
+    const eased = 1 - Math.pow(1 - k, 3);
+    el.innerHTML = moneyHtml(from + (target - from) * eased, currency);
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+
 function renderHome(app) {
   const { expenses, currentMonth: month, couple, profile, members, filterBy, searchQuery } = getState();
   const sides = resolveMemberSides(members);
@@ -590,20 +649,82 @@ function renderHome(app) {
   if (memberChips.length < 2) {
     memberChips.push(`<button class="filter-chip" data-filter="${MISSING_PARTNER_ID}" data-disabled="true">${t('home.partnerNotJoined')}</button>`);
   }
+  // Доля каждого в тратах месяца: «только A», «только B» и совместные
+  const coupleSpendable = expenses.filter((x) => !isGoalExpense(x));
+  const splitTotals = { a: 0, b: 0, shared: 0 };
+  for (const x of coupleSpendable) {
+    const amount = parseFloat(x.amount) || 0;
+    if (x.split === 'equal') { splitTotals.shared += amount; continue; }
+    const side = resolvePayerSide(x.paid_by, sides, expenseJoinedProfileName(x));
+    if (side === 'b') splitTotals.b += amount; else splitTotals.a += amount;
+  }
+  const splitSum = splitTotals.a + splitTotals.b + splitTotals.shared;
+  const income = getIncomeFromState();
+  const incomeLeft = income - totalAll;
+  const incomePct = income > 0 ? Math.min(100, Math.round((totalAll / income) * 100)) : 0;
+  const [mY, mM] = month.split('-').map(Number);
+  const nowDate = new Date();
+  const isThisMonth = nowDate.getFullYear() === mY && nowDate.getMonth() + 1 === mM;
+  const daysElapsed = isThisMonth ? nowDate.getDate() : new Date(mY, mM, 0).getDate();
+  const hasAdvancedFilters = !!(getState().categoryFilter || getState().amountMin || getState().amountMax || getState().dateFrom || getState().dateTo);
+  const heroLabel = filterBy ? t('home.expensesOf', { name: selectedMemberLabel }) : t('home.spentTogether');
+
+  const payerBadge = (exp) => {
+    if (exp.split === 'equal') return `<span class="payer-badge shared">${icon('heart', 9, '#fff', 3)}</span>`;
+    const side = resolvePayerSide(exp.paid_by, sides, expenseJoinedProfileName(exp));
+    const member = side === 'b' ? memberB : memberA;
+    const url = member?.avatar_url || (member?.id === profile?.id ? profile?.avatar_url : null);
+    const label = resolvePayerLabel(exp, sides);
+    return `<span class="payer-badge ${side === 'b' ? 'b' : ''}" title="${e(label)}">${url ? `<img src="${url}" alt="">` : e((label || '?')[0])}</span>`;
+  };
+
   app.innerHTML = `
     <div class="page-enter">
       <div class="header">
-        <div><div class="header-title">${t('home.title')}</div></div>
-        
+        <div class="header-row">
+          <div class="header-title">${t('home.title')}</div>
+          <div class="month-switch">
+            <button id="prev-month" aria-label="‹">${icon('chevron-left', 16, 'currentColor', 2.4)}</button>
+            <span>${formatMonth(month)}</span>
+            <button id="next-month" aria-label="›">${icon('chevron-right', 16, 'currentColor', 2.4)}</button>
+          </div>
+        </div>
       </div>
-      <div class="month-nav">
-        <button id="prev-month">${icon('chevron-left', 18)}</button>
-        <span class="month-label">${formatMonth(month)}</span>
-        <button id="next-month">${icon('chevron-right', 18)}</button>
+      <div class="hero">
+        <div class="hero-label">${e(heroLabel)}</div>
+        <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
+        <div class="hero-meta">${t('home.txCount', { count: spendable.length })}${total > 0 ? ` · ${t('home.perDay', { amount: formatMoney(total / Math.max(1, daysElapsed), couple?.currency) })}` : ''}</div>
+        ${!filterBy && splitSum > 0 ? `
+        <div class="hero-split">
+          <div class="split-bar">
+            ${splitTotals.a > 0 ? `<i class="a" style="flex-grow:${splitTotals.a}"></i>` : ''}
+            ${splitTotals.shared > 0 ? `<i class="shared" style="flex-grow:${splitTotals.shared}"></i>` : ''}
+            ${splitTotals.b > 0 ? `<i class="b" style="flex-grow:${splitTotals.b}"></i>` : ''}
+          </div>
+          <div class="split-legend">
+            <span><i class="split-dot" style="background:#7ff0c9"></i>${e(memberA ? memberDisplayLabel(memberA) : '')} <b>${formatMoney(splitTotals.a, couple?.currency)}</b></span>
+            ${splitTotals.shared > 0 ? `<span><i class="split-dot" style="background:linear-gradient(90deg,#7ff0c9,#ffb39f)"></i>${t('common.shared')} <b>${formatMoney(splitTotals.shared, couple?.currency)}</b></span>` : ''}
+            ${memberB ? `<span><i class="split-dot" style="background:#ffb39f"></i>${e(memberDisplayLabel(memberB))} <b>${formatMoney(splitTotals.b, couple?.currency)}</b></span>` : ''}
+          </div>
+        </div>` : ''}
+        <div class="hero-income" id="income-card">
+          <div class="hero-income-text">
+            ${income > 0
+              ? (incomeLeft >= 0
+                ? t('home.leftOfIncome', { left: formatMoney(incomeLeft, couple?.currency), income: formatMoney(income, couple?.currency) })
+                : t('home.overIncome', { amount: formatMoney(-incomeLeft, couple?.currency) }))
+              : t('home.addIncome')}
+            ${income > 0 ? `<div class="hero-income-track"><i class="${incomeLeft < 0 ? 'over' : ''}" style="width:${incomePct}%"></i></div>` : ''}
+          </div>
+          <button class="hero-income-btn" id="btn-edit-income" aria-label="${t('home.monthIncome')}">${icon(income > 0 ? 'wallet' : 'plus', 17, '#fff', 2.2)}</button>
+        </div>
       </div>
-      <div style="display:flex; gap:8px; padding:0 16px 10px;">
-        <input class="form-input" id="home-search" placeholder="${t('home.searchPlaceholder')}" value="${e(searchQuery || '')}" style="flex:1;">
-        <button class="btn btn-secondary btn-small" id="btn-open-filters" style="white-space:nowrap;">${t('home.filters')}</button>
+      <div class="search-row">
+        <label class="search-field">
+          ${icon('search', 17)}
+          <input class="form-input" id="home-search" placeholder="${t('home.searchPlaceholder')}" value="${e(searchQuery || '')}" aria-label="${t('home.search')}">
+        </label>
+        <button class="icon-btn" id="btn-open-filters" aria-label="${t('home.filters')}">${icon('sliders', 18)}${hasAdvancedFilters ? '<i class="dot"></i>' : ''}</button>
       </div>
       <div class="filter-sticky">
         <div class="filter-bar">
@@ -611,74 +732,59 @@ function renderHome(app) {
           ${memberChips.join('\n          ')}
         </div>
       </div>
-      <div class="income-card" id="income-card">
-        <div class="income-row">
-          <div>
-            <div class="income-label">${t('home.monthIncome')}</div>
-            <div class="income-value" id="income-display">${formatMoney(getIncomeFromState(), couple?.currency)}</div>
-          </div>
-          <button class="income-edit-btn" id="btn-edit-income">${icon('settings', 16)}</button>
-        </div>
-        <div class="income-bar-track"><div class="income-bar-fill" style="width:${getIncomeFromState() > 0 ? Math.min(100, Math.round(totalAll / getIncomeFromState() * 100)) : 0}%"></div></div>
-        <div class="income-remaining">${getIncomeFromState() > 0 ? t('home.remaining', { amount: formatMoney(Math.max(0, getIncomeFromState() - totalAll), couple?.currency), pct: Math.max(0, Math.round((1 - totalAll / getIncomeFromState()) * 100)) }) : t('home.setIncomeHint')}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">${t('home.expensesOf', { name: selectedMemberLabel })}</div>
-        <div class="summary-total">${formatMoney(total, couple?.currency)}</div>
-        <div class="summary-badge">${icon('trending-down', 14)} ${t('home.txCount', { count: spendable.length })}</div>
-      </div>
       <div class="tx-section">
         ${grouped.length === 0 ? `
           <div class="empty-state">
-            ${icon('credit-card', 48, 'var(--c-text-muted)')}
-            <p>${t('home.emptyMonth')}</p>
-            <button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button>
+            ${catTile('wallet', '#1d9e75', 64)}
+            <p style="margin-top:14px;">${t('home.emptyMonth')}</p>
+            <button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 14px; max-width: 240px;">${t('home.addExpense')}</button>
           </div>
-        ` : grouped.map(([date, items]) => `
-          <div class="tx-day-header">${formatDate(date)}</div>
+        ` : grouped.map(([date, items]) => {
+          const dayTotal = items.filter((x) => !isGoalExpense(x)).reduce((sum, x) => sum + parseFloat(x.amount), 0);
+          return `
+          <div class="tx-day">
+            <div class="tx-day-header"><span>${formatDate(date)}</span>${dayTotal > 0 ? `<span class="tx-day-total">${formatMoney(dayTotal, couple?.currency)}</span>` : ''}</div>
+            <div class="tx-day-card">
           ${items.map(exp => {
             const payerName = resolvePayerLabel(exp, sides);
-            const rowDate = formatExpenseDateRow(exp.expense_date);
             if (isGoalExpense(exp)) {
               const goalName = exp.goal_contributions[0]?.goals?.name || exp.description;
               return `
                 <div class="tx-swipe-row" data-id="${exp.id}">
                   <button class="tx-delete-btn" type="button">${t('common.delete')}</button>
                   <div class="tx-item">
-                    <div class="tx-icon" style="background: var(--c-accent-light)">${icon('target', 18, 'var(--c-accent)')}</div>
+                    ${catTile('target', '#1d9e75', 42).slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                     <div class="tx-info">
                       <div class="tx-name">${t('home.savedToGoal', { name: e(goalName) })}</div>
-                      <div class="tx-cat">${t('home.savingLabel')}</div>
-                      ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
+                      <div class="tx-cat">${t('home.savingLabel')} · ${e(payerName)}</div>
                     </div>
-                    <div><div class="tx-amount" style="color:var(--c-accent);">${formatMoney(exp.amount, exp.currency)}</div><div class="tx-who">${e(payerName)}</div></div>
+                    <div class="tx-amount saving">+${moneyHtml(exp.amount, exp.currency)}</div>
                   </div>
                 </div>`;
             }
             const cat = exp.categories;
-            const catColor = safeColor(cat?.color || '#888780');
-            const bgColor = catColor + '18';
+            const tile = catTile(cat?.icon || 'more-horizontal', cat?.color || '#888780', 42);
             return `
               <div class="tx-swipe-row" data-id="${exp.id}">
                 <button class="tx-delete-btn" type="button">${t('common.delete')}</button>
                 <div class="tx-item">
-                  <div class="tx-icon" style="background: ${bgColor}">${icon(cat?.icon || 'more-horizontal', 18, catColor)}</div>
+                  ${tile.slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                   <div class="tx-info">
-                    <div class="tx-name">${e(exp.description)}${exp.receipt_url ? ' 📎' : ''}</div>
-                    <div class="tx-cat">${e(categoryLabel(cat?.name) || t('common.other'))}</div>
-                    ${rowDate ? `<div class="tx-row-date">${rowDate}</div>` : ''}
+                    <div class="tx-name">${e(exp.description)}</div>
+                    <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))} · ${e(payerName)}</div>
                   </div>
-                  <div><div class="tx-amount negative">-${formatMoney(exp.amount, exp.currency)}</div><div class="tx-who">${e(payerName)}</div></div>
+                  <div class="tx-amount">${moneyHtml(exp.amount, exp.currency)}</div>
                 </div>
               </div>`;
           }).join('')}
-        `).join('')}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
-    <button class="fab" id="add-exp-btn">${icon('plus', 28)}</button>
     ${renderTabBar()}
   `;
-  document.getElementById('add-exp-btn').onclick = showAddExpenseModal;
+  animateHeroTotal(couple?.currency);
   document.getElementById('btn-edit-income')?.addEventListener('click', () => {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
@@ -694,18 +800,24 @@ function renderHome(app) {
       <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">${t('home.monthIncome')}</div>
-        <div class="income-entries-block" style="max-height:220px;overflow-y:auto;margin-bottom:12px;">
-          ${incomeEntries.length === 0 ? `<p style="font-size:13px;color:var(--c-text-secondary);margin:0;">${t('home.incomeEmptyHint')}</p>` : incomeEntries.map((ent) => `
-            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:8px 0;border-bottom:1px solid var(--c-border);gap:8px;flex-wrap:wrap;">
-              <span style="color:var(--c-text-secondary);">${e(formatDateTime(ent.created_at))}</span>
-              <span style="font-weight:600;">${e(authorLabel(ent.created_by))}</span>
-              <span style="font-weight:600;white-space:nowrap;">${formatMoney(ent.amount, couple?.currency)}</span>
-            </div>
-          `).join('')}
+        <div class="income-entries-block" style="max-height:240px;overflow-y:auto;margin-bottom:14px;">
+          ${incomeEntries.length === 0 ? `<p style="font-size:13px;color:var(--c-text-secondary);margin:0;">${t('home.incomeEmptyHint')}</p>` : incomeEntries.map((ent) => {
+            const side = ent.created_by === resolveMemberSides(members).memberB?.id ? 'b' : '';
+            const who = authorLabel(ent.created_by);
+            return `
+            <div class="income-entry">
+              <div class="mini-avatar ${side}">${e((who || '?')[0])}</div>
+              <div class="income-entry-main">
+                <div class="income-entry-who">${e(who)}</div>
+                <div class="income-entry-date">${e(formatDateTime(ent.created_at))}</div>
+              </div>
+              <div class="income-entry-amount">+${formatMoney(ent.amount, couple?.currency)}</div>
+            </div>`;
+          }).join('')}
         </div>
         <div class="form-group">
           <label class="form-label">${t('home.addIncomeLabel', { currency: couple?.currency || 'USD' })}</label>
-          <input type="number" class="form-input amount" id="income-add" placeholder="0" inputmode="decimal" min="0" step="0.01">
+          <input type="number" class="form-input" id="income-add" placeholder="0" inputmode="decimal" min="0" step="0.01" style="font-size:24px;font-weight:700;text-align:center;">
         </div>
         <button class="btn btn-primary" id="btn-save-income">${t('common.add')}</button>
       </div>
@@ -898,6 +1010,12 @@ function renderHome(app) {
 }
 
 export function registerHomeRoute() {
+  // «+» в таб-баре шлёт событие — лист расхода открывается с любого экрана
+  window.addEventListener('ce:add-expense', () => {
+    if (!getState().couple || document.querySelector('.modal-backdrop')) return;
+    hapticTap();
+    showAddExpenseModal();
+  });
   route('/', async (app) => {
     const state = getState();
     if (!state.profile) { navigate('/auth'); return; }
