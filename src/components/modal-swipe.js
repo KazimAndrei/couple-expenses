@@ -21,7 +21,9 @@ export function enableModalSwipe(backdrop) {
     startX = e.touches[0].clientX;
     deltaY = 0;
     active = false;
-    canClose = sheet.scrollTop <= 0;
+    // У листа с закреплённой кнопкой прокручивается внутреннее тело, а не сам лист
+    const scroller = sheet.querySelector('.sheet-body') || sheet;
+    canClose = scroller.scrollTop <= 0;
     sheet.style.transition = '';
     backdrop.style.transition = '';
   }, { passive: true });

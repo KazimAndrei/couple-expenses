@@ -1,4 +1,4 @@
-import { route, navigate, getCurrentPath } from '../lib/router.js';
+import { route, navigate, getCurrentPath, pinStickyUnderHeader } from '../lib/router.js';
 import { getState, setState } from '../lib/store.js';
 import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
@@ -84,7 +84,8 @@ async function showAddExpenseModal() {
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
   const sideOf = (memberId) => (memberId === sides.memberB?.id ? 'b' : 'a');
   backdrop.innerHTML = `
-    <div class="modal-sheet">
+    <div class="modal-sheet has-footer">
+     <div class="sheet-body">
       <div class="modal-handle"></div>
       <div class="modal-title">${t('home.newExpense')}</div>
       <label class="amount-hero" for="exp-amount">
@@ -151,6 +152,7 @@ async function showAddExpenseModal() {
           ${icon('repeat', 16)}<span>${t('home.repeatShort')}</span>
         </label>
       </div>
+     </div>
       <div class="sheet-footer">
         <button class="btn btn-primary" id="btn-save-exp">${t('common.add')}</button>
       </div>
@@ -788,6 +790,7 @@ function renderHome(app) {
     ${renderTabBar()}
   `;
   animateHeroTotal(couple?.currency);
+  pinStickyUnderHeader();
   document.getElementById('btn-edit-income')?.addEventListener('click', () => {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';

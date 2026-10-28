@@ -34,6 +34,11 @@
   --c-hero-to: #1d9e75;
   --shadow-card: 0 1px 2px rgba(20,20,10,0.04), 0 6px 20px -8px rgba(20,20,10,0.10);
   --radius-lg: 22px;
+  /* Живой фон: три мягких пятна цветов бренда и партнёров */
+  --bg-blob-a: rgba(29,158,117,0.26);
+  --bg-blob-b: rgba(232,115,90,0.22);
+  --bg-blob-c: rgba(127,119,221,0.22);
+  --c-bg-glass: rgba(246,245,240,0.72);
   --ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 
@@ -53,6 +58,10 @@
     --c-warning-light: #3a2a0c;
     --c-danger-light: #3d1817;
     --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+    --bg-blob-a: rgba(29,158,117,0.30);
+    --bg-blob-b: rgba(232,115,90,0.22);
+    --bg-blob-c: rgba(127,119,221,0.28);
+    --c-bg-glass: rgba(20,20,19,0.72);
     --glass-bg: rgba(30,30,28,0.55);
     --glass-border: rgba(255,255,255,0.12);
     --glass-shadow: 0 8px 28px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
@@ -71,6 +80,10 @@
   --c-warning-light: #3a2a0c;
   --c-danger-light: #3d1817;
   --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+  --bg-blob-a: rgba(29,158,117,0.30);
+  --bg-blob-b: rgba(232,115,90,0.22);
+  --bg-blob-c: rgba(127,119,221,0.28);
+  --c-bg-glass: rgba(20,20,19,0.72);
   --glass-bg: rgba(30,30,28,0.55);
   --glass-border: rgba(255,255,255,0.12);
   --glass-shadow: 0 8px 28px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
@@ -427,11 +440,14 @@ body[data-settled="1"] .page-enter { animation:none; }
 .payer-badge img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---- Шапка ---- */
-.header-row { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; }
+.header-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-width:0; }
+.header-row .header-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.month-switch { flex-shrink:0; }
+
 .month-switch { display:flex; align-items:center; gap:2px; padding:3px; border-radius:999px; background:var(--c-surface); border:1px solid var(--c-border); box-shadow: var(--shadow-card); }
 .month-switch button { width:30px; height:30px; border-radius:50%; border:none; background:transparent; color:var(--c-text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .month-switch button:active { background:var(--c-surface-alt); transform:scale(0.92); }
-.month-switch span { font-size:14px; font-weight:600; min-width:96px; text-align:center; text-transform:capitalize; }
+.month-switch span { font-size:14px; font-weight:600; min-width:84px; white-space:nowrap; text-align:center; text-transform:capitalize; }
 
 /* ---- Главная карточка (hero) ---- */
 .hero {
@@ -455,8 +471,9 @@ body[data-settled="1"] .page-enter { animation:none; }
 .split-bar .a { background:#7ff0c9; }
 .split-bar .b { background:#ffb39f; }
 .split-bar .shared { background: linear-gradient(90deg, #7ff0c9, #ffb39f); }
-.split-legend { display:flex; justify-content:space-between; gap:8px; margin-top:8px; font-size:12px; }
-.split-legend span { display:flex; align-items:center; gap:6px; opacity:0.92; min-width:0; }
+/* На узких экранах (iPhone SE) три подписи не помещались в строку и наезжали друг на друга — переносим */
+.split-legend { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; margin-top:8px; font-size:12px; }
+.split-legend span { display:flex; align-items:center; gap:5px; opacity:0.92; white-space:nowrap; }
 .split-legend b { font-weight:600; }
 .split-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .hero-income { display:flex; align-items:center; gap:10px; margin-top:14px; padding:10px 10px 10px 12px; border-radius:14px; background:rgba(255,255,255,0.13); }
@@ -531,7 +548,11 @@ body[data-settled="1"] .page-enter { animation:none; }
 
 /* ---- Лист: общий вид ---- */
 .modal-sheet { border-radius: 26px 26px 0 0; }
-.sheet-footer { position: sticky; bottom: 0; margin: 8px -20px calc(-20px - var(--safe-bottom)); padding: 12px 20px calc(16px + var(--safe-bottom)); background: var(--c-surface); background: linear-gradient(to bottom, color-mix(in srgb, var(--c-surface) 0%, transparent), var(--c-surface) 28%); z-index: 3; }
+/* Лист с закреплённой кнопкой: прокручивается только тело, кнопка — отдельная строка снизу.
+   Раньше кнопка была sticky внутри прокрутки и в конце листа заезжала на чипы даты и чека. */
+.modal-sheet.has-footer { display:flex; flex-direction:column; overflow:hidden; padding:0; }
+.modal-sheet.has-footer .sheet-body { flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 20px 8px; }
+.sheet-footer { flex-shrink:0; padding:12px 20px calc(16px + var(--safe-bottom)); background:var(--c-surface); border-top:1px solid var(--c-border); }
 .sheet-footer .btn { box-shadow: 0 10px 24px -12px rgba(15,110,86,0.7); }
 
 /* ---- Ввод суммы ---- */
@@ -594,7 +615,7 @@ body[data-settled="1"] .page-enter { animation:none; }
 .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 16px 14px; }
 .stat-card { background:var(--c-surface); border-radius:16px; padding:12px; border:1px solid var(--c-border); box-shadow:var(--shadow-card); min-width:0; }
 .stat-label { font-size:11.5px; color:var(--c-text-secondary); margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.stat-value { font-size:17px; font-weight:700; letter-spacing:-0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:2px; }
+.stat-value { font-size:clamp(14px, 4.4vw, 17px); font-weight:700; letter-spacing:-0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:2px; }
 .stat-value.up { color:var(--c-danger); }
 .stat-value.down { color:var(--c-accent); }
 
@@ -647,8 +668,8 @@ body[data-settled="1"] .page-enter { animation:none; }
 .income-entry { display:flex; align-items:center; gap:12px; padding:10px 0; }
 .income-entry + .income-entry { border-top:1px solid var(--c-border); }
 .income-entry-main { flex:1; min-width:0; }
-.income-entry-who { font-size:14px; font-weight:600; }
-.income-entry-date { font-size:12px; color:var(--c-text-secondary); }
+.income-entry-who { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.income-entry-date { font-size:12px; color:var(--c-text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .income-entry-amount { font-size:15px; font-weight:700; color:var(--c-accent); white-space:nowrap; }
 .btn-income-delete { background:none; border:none; padding:6px; margin-right:-6px; cursor:pointer; color:var(--c-text-muted); display:inline-flex; border-radius:50%; }
 .btn-income-delete:active { color:var(--c-danger); background:var(--c-danger-light); }
@@ -711,3 +732,43 @@ body[data-settled="1"] .page-enter { animation:none; }
 .profile-menu-item.danger { color:var(--c-danger); justify-content:center; font-weight:600; }
 .profile-menu-item.danger + .profile-menu-item.danger::before { left:0; }
 .profile-menu-item .row-detail { display:block; font-size:12px; color:var(--c-text-secondary); }
+
+/* Узкие экраны — в самом конце, чтобы перекрывать базовые правила выше */
+/* iPhone SE: «Расходы» и «Октябрь 2026» вместе шире 320pt — ужимаем заголовок и переключатель */
+@media (max-width: 360px) {
+  .header-row .header-title { font-size:22px; }
+  .month-switch span { font-size:13px; min-width:0; padding:0 2px; }
+  .month-switch button { width:26px; }
+  .payer-options .payer-option { padding:8px 6px; gap:5px; font-size:13px; }
+  .payer-options .payer-avatar { width:22px; height:22px; }
+}
+
+/* ---- Живой градиентный фон ----
+   Один слой на всё приложение, двигается только transform (дёшево для GPU).
+   Шапка и липкие чипы — полупрозрачное стекло, чтобы фон не обрезался полосами. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 32% at 20% 18%, var(--bg-blob-a), transparent 72%),
+    radial-gradient(40% 32% at 84% 50%, var(--bg-blob-b), transparent 72%),
+    radial-gradient(46% 34% at 28% 82%, var(--bg-blob-c), transparent 72%);
+  will-change: transform;
+  animation: bgDrift 28s ease-in-out infinite alternate;
+}
+@keyframes bgDrift {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50%  { transform: translate3d(4%, -3%, 0) rotate(8deg) scale(1.06); }
+  100% { transform: translate3d(-4%, 3%, 0) rotate(-6deg) scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+/* Фон держит только html: собственный фон body рисуется поверх слоя z-index:-1 и прятал градиент */
+body { background: transparent; }
+.header, .filter-sticky {
+  background: var(--c-bg-glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+}

@@ -21,6 +21,16 @@ export function navigate(path) {
   window.location.hash = path;
 }
 
+// Липкая полоса чипов должна стоять ровно под шапкой. Высота шапки разная (на аналитике
+// есть подзаголовок с месяцем), поэтому меряем её, а не держим константу в CSS —
+// иначе чипы при прокрутке заезжали на подзаголовок.
+export function pinStickyUnderHeader() {
+  const header = document.querySelector('#app .header');
+  if (!header) return;
+  const top = `${Math.round(header.getBoundingClientRect().height)}px`;
+  document.querySelectorAll('#app .filter-sticky').forEach((el) => { el.style.top = top; });
+}
+
 export function getCurrentPath() {
   return window.location.hash.slice(1) || '/';
 }
@@ -52,6 +62,7 @@ async function handleRoute() {
   try {
     if (handler) {
       const cleanup = await handler(app);
+      pinStickyUnderHeader();
       if (isNewScreen) settleTimer = setTimeout(() => { document.body.dataset.settled = '1'; }, 400);
       if (typeof cleanup === 'function') {
         currentCleanup = cleanup;
