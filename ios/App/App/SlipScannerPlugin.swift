@@ -22,7 +22,6 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "listen", returnType: CAPPluginReturnPromise),
     ]
 
-    static let appGroup = "group.com.kazimandrei.coupleexpenses"
     private let work = DispatchQueue(label: "slip-scanner", qos: .userInitiated)
 
     // MARK: - Доступ к Фото
@@ -192,49 +191,54 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // MARK: - Входящие из расширения «Поделиться»
+    // Расширение кладёт картинки в именованный буфер обмена (видят только приложения нашей команды):
+    // App Group для этого не нужен. Элемент — JPEG и id «<ms>-<uuid>.jpg».
 
-    static func inboxURL() -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-            .appendingPathComponent("Inbox", isDirectory: true)
+    static let inboxBoard = "com.kazimandrei.coupleexpenses.inbox"
+    static let idType = "com.kazimandrei.coupleexpenses.inbox-id"
+
+    private func inboxEntries() -> [(id: String, data: Data)] {
+        guard let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: false) else { return [] }
+        return board.items.compactMap { item in
+            guard let id = item[Self.idType] as? String else { return nil }
+            if let data = item["public.jpeg"] as? Data { return (id, data) }
+            if let image = item["public.jpeg"] as? UIImage, let data = image.jpegData(compressionQuality: 0.85) { return (id, data) }
+            return nil
+        }
     }
 
     @objc func takeInbox(_ call: CAPPluginCall) {
-        work.async {
-            guard let dir = Self.inboxURL(),
-                  let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
-                call.resolve(["items": []])
-                return
-            }
-            var items: [[String: Any]] = []
-            for url in files where url.pathExtension.lowercased() == "jpg" {
-                guard let data = try? Data(contentsOf: url), let ui = UIImage(data: data),
-                      let cg = ui.normalizedCGImage(maxSide: 2200) else {
-                    try? FileManager.default.removeItem(at: url)
-                    continue
+        DispatchQueue.main.async {
+            let entries = self.inboxEntries()
+            self.work.async {
+                var items: [[String: Any]] = []
+                for (id, data) in entries {
+                    guard let cg = UIImage(data: data)?.normalizedCGImage(maxSide: 2200) else { continue }
+                    let created = Double(id.split(separator: "-").first ?? "") ?? Date().timeIntervalSince1970 * 1000
+                    items.append([
+                        "id": id,
+                        "created": created,
+                        "data": data.base64EncodedString(),
+                        "qr": SlipVision.detectQr(cg),
+                        "lines": SlipVision.recognizeText(cg),
+                    ])
                 }
-                // Время пишет расширение в имя файла «<ms>-<uuid>.jpg» — без файловых дат (required reason API)
-                let created = Double(url.lastPathComponent.split(separator: "-").first ?? "") ?? Date().timeIntervalSince1970 * 1000
-                items.append([
-                    "id": url.lastPathComponent,
-                    "created": created,
-                    "data": data.base64EncodedString(),
-                    "qr": SlipVision.detectQr(cg),
-                    "lines": SlipVision.recognizeText(cg),
-                ])
+                call.resolve(["items": items])
             }
-            call.resolve(["items": items])
         }
     }
 
     @objc func clearInbox(_ call: CAPPluginCall) {
-        let ids = call.getArray("ids", String.self) ?? []
-        let safe = try? NSRegularExpression(pattern: "^[A-Za-z0-9-]+\\.jpg$")
-        if let dir = Self.inboxURL() {
-            for id in ids where safe?.firstMatch(in: id, range: NSRange(id.startIndex..., in: id)) != nil {
-                try? FileManager.default.removeItem(at: dir.appendingPathComponent(id))
+        let ids = Set(call.getArray("ids", String.self) ?? [])
+        DispatchQueue.main.async {
+            if let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: false) {
+                board.items = board.items.filter { item in
+                    guard let id = item[Self.idType] as? String else { return false }
+                    return !ids.contains(id)
+                }
             }
+            call.resolve()
         }
-        call.resolve()
     }
 }
 

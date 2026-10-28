@@ -3,9 +3,9 @@ import UniformTypeIdentifiers
 import PDFKit
 
 // «Поделиться → CoupleExpenses»: слип, чек или счёт (картинка/PDF) кладётся во входящие
-// общей App Group, после чего открывается приложение — там распознаём и предлагаем добавить расход.
+// (именованный буфер обмена приложения), после чего открывается приложение —
+// там распознаём и предлагаем добавить расход.
 final class ShareViewController: UIViewController {
-    private let appGroup = "group.com.kazimandrei.coupleexpenses"
     private let spinner = UIActivityIndicatorView(style: .large)
 
     override func viewDidLoad() {
@@ -61,16 +61,18 @@ final class ShareViewController: UIViewController {
         return page.thumbnail(of: CGSize(width: box.width * scale, height: box.height * scale), for: .mediaBox)
     }
 
+    // Передаём картинку через именованный буфер обмена: его видят только приложения той же
+    // команды разработчика (без App Group и без запроса «Разрешить вставку»)
     private func save(_ image: UIImage) -> Bool {
-        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
-                .appendingPathComponent("Inbox", isDirectory: true),
-              let data = downscaled(image).jpegData(compressionQuality: 0.85) else { return false }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // Время — в имени файла (приложение не читает файловые даты); запись атомарная,
-        // чтобы приложение никогда не увидело недописанный файл
-        let name = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString).jpg"
-        return (try? data.write(to: dir.appendingPathComponent(name), options: .atomic)) != nil
+        guard let data = downscaled(image).jpegData(compressionQuality: 0.85),
+              let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: true) else { return false }
+        let id = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString).jpg"
+        board.addItems([[Self.idType: id, "public.jpeg": data]])
+        return true
     }
+
+    static let inboxBoard = "com.kazimandrei.coupleexpenses.inbox"
+    static let idType = "com.kazimandrei.coupleexpenses.inbox-id"
 
     private func downscaled(_ image: UIImage) -> UIImage {
         let side = max(image.size.width, image.size.height)
