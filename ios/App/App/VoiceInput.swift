@@ -143,7 +143,10 @@ final class VoiceInputViewController: UIViewController {
             request.contextualStrings = ["THB", "бат", "baht", "Grab", "7-Eleven", "Tops"]
             self.request = request
             let input = engine.inputNode
-            input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buffer, _ in
+            let format = input.outputFormat(forBus: 0)
+            // Во время звонка и на части Bluetooth-маршрутов формат пустой — installTap тогда падает
+            guard format.sampleRate > 0, format.channelCount > 0 else { fail(); return }
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 request.append(buffer)
             }
             engine.prepare()
@@ -188,7 +191,7 @@ final class VoiceInputViewController: UIViewController {
     private func stop() {
         silenceTimer?.invalidate()
         if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        if engine.inputNode.numberOfInputs > 0 { engine.inputNode.removeTap(onBus: 0) }
         request?.endAudio()
         task?.cancel()
         let session = AVAudioSession.sharedInstance()

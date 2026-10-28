@@ -40,11 +40,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>The camera scans payment QR codes and receipts to fill in an expense for you.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Face ID защищает доступ к вашим финансам</string>
+	<string>Face ID protects access to your finances.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>The microphone lets you add an expense by voice — just say it, like “coffee 120”.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>CoupleExpenses finds payment slips from TrueMoney and Thai banks in your photos so you can add them as expenses in one tap. Photos stay on your device.</string>
+	<string>CoupleExpenses looks for TrueMoney and Thai bank payment slips in your photos. Slips are read on your iPhone; a slip you choose to add is attached to that expense as its receipt.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Speech recognition turns what you say into an expense: amount, description and category.</string>
 	<key>UIApplicationSceneManifest</key>

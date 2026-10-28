@@ -12,6 +12,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
+        // Запуск по ссылке из виджета: плагин отдаст её JS, когда тот будет готов
+        connectionOptions.urlContexts.forEach { SlipScannerPlugin.rememberLaunchUrl($0.url) }
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

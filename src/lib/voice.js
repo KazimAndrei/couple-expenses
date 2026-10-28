@@ -27,7 +27,7 @@ const VOICE_HINTS = [
   ['Groceries', /^(продукт[а-яёa-z]*|магазин[а-яёa-z]*|супермаркет[а-яёa-z]*|еда|grocer[а-яёa-z]*|food|market)$/i],
   ['Restaurants', /^(кофе|кофейн[а-яёa-z]*|каф[а-яёa-z]*|ресторан[а-яёa-z]*|обед[а-яёa-z]*|ужин[а-яёa-z]*|завтрак[а-яёa-z]*|доставк[а-яёa-z]*|пицц[а-яёa-z]*|суши|бар[а-яёa-z]*|coffee|lunch|dinner|breakfast|restaurant|cafe|takeout|delivery)$/i],
   ['Transport', /^(такси|бензин[а-яёa-z]*|топлив[а-яёa-z]*|байк[а-яёa-z]*|скутер[а-яёa-z]*|автобус[а-яёa-z]*|метро|парковк[а-яёa-z]*|grab[а-яёa-z]*|bolt|taxi|gas|fuel|bus|parking|scooter)$/i],
-  ['Housing', /^(аренд[а-яёa-z]*|квартир[а-яёa-z]*|жиль[а-яёa-z]*|кондо|свет|электричеств[а-яёa-z]*|вод[а-яёa-z]*|коммунал[а-яёa-z]*|rent|apartment|condo|electricity|water|utilities)$/i],
+  ['Housing', /^(аренд[а-яёa-z]*|квартир[а-яёa-z]*|жиль[а-яёa-z]*|кондо|свет|электричеств[а-яёa-z]*|коммунал[а-яёa-z]*|rent|apartment|condo|electricity|water|utilities)$/i],
   ['Health', /^(аптек[а-яёa-z]*|лекарств[а-яёa-z]*|врач[а-яёa-z]*|доктор[а-яёa-z]*|клиник[а-яёa-z]*|больниц[а-яёa-z]*|pharmacy|medicine|doctor|clinic|hospital)$/i],
   ['Entertainment', /^(кино|массаж[а-яёa-z]*|концерт[а-яёa-z]*|игр[а-яёa-z]*|cinema|movies?|massage|concert|games?)$/i],
   ['Clothing', /^(одежд[а-яёa-z]*|обув[а-яёa-z]*|кроссовк[а-яёa-z]*|clothes|shoes|clothing)$/i],
@@ -35,10 +35,17 @@ const VOICE_HINTS = [
 ];
 
 function wordsToNumber(tokens) {
-  // tokens — подряд идущие числительные; «две тысячи пятьсот» → 2500, «полторы тысячи» → 1500
+  // tokens — подряд идущие числительные; «две тысячи пятьсот» → 2500, «полторы тысячи» → 1500,
+  // «две с половиной тысячи» → 2500; «twelve fifty» (без hundred) — 12.50, как говорят цены
+  const lws = tokens.map((w) => w.toLowerCase());
+  const plain = lws.filter((w) => !/^(a|and|и)$/.test(w));
+  if (plain.length === 2 && plain.every((w) => UNITS[w] != null && UNITS[w] >= 10 && UNITS[w] < 100) && UNITS[plain[1]] >= 20) {
+    return UNITS[plain[0]] + UNITS[plain[1]] / 100;
+  }
   let total = 0, current = 0, used = false;
-  for (const w of tokens) {
-    const lw = w.toLowerCase();
+  for (let k = 0; k < lws.length; k++) {
+    const lw = lws[k];
+    if (lw === 'с' && lws[k + 1] === 'половиной') { current += 0.5; k++; continue; }
     if (lw in SCALES) {
       const scale = SCALES[lw];
       total += (current || 1) * scale;
@@ -68,21 +75,36 @@ export function parseVoiceExpense(text, { categories = [], labelOf = (n) => n, n
   const src = String(text || '')
     .replace(/(\d)\s+(?=\d{3}\b)/g, '$1') // «1 800» → «1800»
     .replace(/(\d)([฿$€₽])/g, '$1 $2').replace(/([฿$€₽])(\d)/g, '$1 $2');
-  const tokens = src.split(/\s+/).map((w) => w.replace(/^[«"“(]+|[»"”).!?,:;]+$/g, '')).filter(Boolean);
-
-  let amount = null;
   let dayShift = 0;
+  // «day before yesterday» — до разбора слов, иначе «yesterday» съестся отдельно
+  let pre = src;
+  if (/day before yesterday/i.test(pre)) { dayShift = -2; pre = pre.replace(/day before yesterday/ig, ' '); }
+  const tokens = pre.split(/\s+/)
+    .map((w) => w.replace(/^[«"“(]+|[»"”).!?,:;]+$/g, '').replace(/['’]s$/i, ''))
+    .filter(Boolean);
+
+  // Все числа фразы — кандидаты; сумма — число рядом с валютой, иначе самое большое
+  // («кофе за 2 чашки 120» → 120), остальные остаются в описании
+  const candidates = [];
   let payer = null;
   const rest = [];
   for (let i = 0; i < tokens.length; i++) {
     const w = tokens[i];
     const lw = w.toLowerCase();
-    if (amount == null && parseNumberToken(w) != null) { amount = parseNumberToken(w); continue; }
-    if (amount == null && isNumWord(w) && !(lw === 'a' || lw === 'and')) {
+    const nextCur = CURRENCY.test(String(tokens[i + 1] || '').toLowerCase());
+    if (parseNumberToken(w) != null) {
+      candidates.push({ value: parseNumberToken(w), word: w, pos: rest.length, cur: nextCur });
+      continue;
+    }
+    if (isNumWord(w) && !(lw === 'a' || lw === 'and')) {
       let j = i;
-      while (j < tokens.length && (isNumWord(tokens[j]) || /^(a|and|и)$/i.test(tokens[j]))) j++;
+      while (j < tokens.length && (isNumWord(tokens[j]) || /^(a|and|и|с|половиной)$/i.test(tokens[j]))) j++;
       const n = wordsToNumber(tokens.slice(i, j));
-      if (n) { amount = n; i = j - 1; continue; }
+      if (n) {
+        candidates.push({ value: n, word: tokens.slice(i, j).join(' '), pos: rest.length, cur: CURRENCY.test(String(tokens[j] || '').toLowerCase()) });
+        i = j - 1;
+        continue;
+      }
     }
     if (lw in DAY_WORDS) { dayShift = DAY_WORDS[lw]; continue; }
     if (SHARED.test(lw)) { payer = 'shared'; continue; }
@@ -90,13 +112,11 @@ export function parseVoiceExpense(text, { categories = [], labelOf = (n) => n, n
     if (CURRENCY.test(lw)) continue;
     rest.push(w);
   }
-  // «позавчера» и «day before yesterday»
-  const joined = rest.join(' ');
+  const chosen = candidates.find((c) => c.cur) || [...candidates].sort((x, y) => y.value - x.value)[0] || null;
+  const amount = chosen ? chosen.value : null;
+  // Остальные числа возвращаем в описание на свои места («кофе за 2 чашки»)
+  for (const c of [...candidates].reverse()) if (c !== chosen) rest.splice(c.pos, 0, c.word);
   let words = rest;
-  if (/day before yesterday/i.test(joined)) {
-    dayShift = -2;
-    words = joined.replace(/day before yesterday/i, '').split(/\s+/).filter(Boolean);
-  }
   while (words.length && FILLER.test(words[0])) words.shift();
   while (words.length && FILLER.test(words[words.length - 1])) words.pop();
   const description = words.join(' ').replace(/\s+/g, ' ').trim();

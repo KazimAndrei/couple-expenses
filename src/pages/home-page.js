@@ -313,7 +313,13 @@ export async function showAddExpenseModal(prefill = {}) {
     });
   }
 
-  setTimeout(() => { if (!prefill.amount) document.getElementById('exp-amount')?.focus(); }, 300);
+  // Открыли из виджета «Голосом» / «QR» — сразу запускаем (инструкция при первом разе покажется сама)
+  if (capture && prefill.autostart) {
+    const btn = document.getElementById(prefill.autostart === 'voice' ? 'btn-voice' : 'btn-scan-qr');
+    setTimeout(() => btn?.click(), 350);
+  } else {
+    setTimeout(() => { if (!prefill.amount) document.getElementById('exp-amount')?.focus(); }, 300);
+  }
   const reopenAfterCategoryChange = async (action) => {
     // Введённое (в том числе из слипа или голоса) не теряем: форма откроется заново с теми же данными
     const keep = {
@@ -1163,6 +1169,7 @@ function renderHome(app) {
 
 let paymentCheckAt = 0;
 let paymentCheckRunning = false;
+let paymentCheckAgain = null; // пока шла проверка, попросили ещё одну — выполним после
 let paymentRetryTimer = null;
 
 // Пока открыта форма или другой лист — найденное ждёт (оно сохранено), проверяем снова чуть позже
@@ -1178,7 +1185,11 @@ async function refreshAfterCapture() {
 
 // Проверяем при открытии главной и при возврате в приложение (в том числе после «Поделиться»)
 export async function runPaymentCheck({ force = false, retry = false } = {}) {
-  if (!isCaptureAvailable() || paymentCheckRunning || !getState().couple) return;
+  if (!isCaptureAvailable() || !getState().couple) return;
+  if (paymentCheckRunning) {
+    paymentCheckAgain = { force: force || paymentCheckAgain?.force, retry: true };
+    return;
+  }
   if (document.querySelector('.modal-backdrop')) {
     if (retry) retryPaymentCheckLater();
     return;
@@ -1226,6 +1237,11 @@ export async function runPaymentCheck({ force = false, retry = false } = {}) {
     });
   } finally {
     paymentCheckRunning = false;
+    if (paymentCheckAgain) {
+      const again = paymentCheckAgain;
+      paymentCheckAgain = null;
+      setTimeout(() => runPaymentCheck(again), 300);
+    }
   }
 }
 
@@ -1266,14 +1282,20 @@ function slipImportBannerHtml() {
 
 export function registerHomeRoute() {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') runPaymentCheck();
+    // retry: если открыта форма — проверим ещё раз, когда её закроют (иначе присланный слип ждёт до следующего возврата)
+    if (document.visibilityState === 'visible') runPaymentCheck({ retry: true });
   });
   // «+» в таб-баре шлёт событие — лист расхода открывается с любого экрана
-  window.addEventListener('ce:add-expense', () => {
-    if (!getState().couple || document.querySelector('.modal-backdrop')) return;
+  window.addEventListener('ce:add-expense', (ev) => {
+    if (!getState().couple) return;
+    // Из виджета форму открываем поверх всего; обычное «+» не дублирует уже открытый лист
+    // Открыт другой лист (в том числе из прошлого нажатия на виджет) — не закрываем его силой:
+    // у листов своя логика закрытия (просмотренные слипы, диалог удаления аккаунта)
+    if (document.querySelector('.modal-backdrop')) return;
     hapticTap();
-    showAddExpenseModal();
+    showAddExpenseModal({ autostart: ev.detail?.autostart || null });
   });
+  window.addEventListener('ce:check-payments', () => runPaymentCheck({ retry: true }));
   route('/', async (app) => {
     const state = getState();
     if (!state.profile) { navigate('/auth'); return; }

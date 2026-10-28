@@ -4,7 +4,8 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { parseSlip } from '../lib/slips.js';
 import { getLang } from '../lib/i18n.js';
 
-const Capture = registerPlugin('Capture');
+// Один экземпляр на всё приложение: повторный registerPlugin Капаситор отклоняет с предупреждением
+export const Capture = registerPlugin('Capture');
 const SETTINGS_KEY = 'ce_slip_import_v1';
 const SEEN_LIMIT = 400;
 
@@ -89,7 +90,8 @@ export async function collectPayments({ now = new Date(), scanPhotos = true } = 
     const { items: inbox = [] } = await withTimeout(Capture.takeInbox(), 30000);
     for (const it of inbox) {
       const slip = parseSlip(it, now);
-      items.push({ source: 'inbox', inboxId: it.id, created: it.created, blob: b64ToBlob(it.data), slip });
+      // Присланный слип, который уже добавляли, — показываем, но помечаем (по умолчанию не добавляется)
+      items.push({ source: 'inbox', inboxId: it.id, created: it.created, blob: b64ToBlob(it.data), slip, alreadyAdded: !!slip.key && seen.has(slip.key) });
     }
   } catch { /* расширения может не быть в старой сборке */ }
 

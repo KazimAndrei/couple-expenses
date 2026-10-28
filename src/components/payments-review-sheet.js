@@ -25,7 +25,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
   const rows = items.map((it, i) => ({
     ...it,
     idx: i,
-    checked: true,
+    checked: !it.alreadyAdded,
     description: slipDescription(it.slip, t('capture.transfer')) || t('capture.payment'),
     categoryId: slipCategoryId(it.slip, categories, categoryLabel, defaultCategoryId),
   }));
@@ -41,12 +41,12 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
       <p class="capture-sub">${t(otherCurrency ? 'capture.foundSubCurrency' : 'capture.foundSub', { cur: couple?.currency || '' })}</p>
       <div class="pay-list">
         ${rows.map((r) => `
-        <div class="pay-row on" data-idx="${r.idx}">
+        <div class="pay-row ${r.checked ? 'on' : ''}" data-idx="${r.idx}">
           <button type="button" class="pay-check" aria-label="${t('capture.include')}">${icon('check', 14, '#fff', 3)}</button>
           <div class="pay-thumb" data-thumb="${r.idx}"></div>
           <div class="pay-main">
             <input class="pay-desc" value="${e(r.description)}" aria-label="${t('home.description')}">
-            <div class="pay-meta">${e(meta(r.slip))}</div>
+            <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${e(meta(r.slip))}</div>
             <select class="pay-cat" aria-label="${t('common.category')}">
               ${categories.map((c) => `<option value="${c.id}" ${c.id === r.categoryId ? 'selected' : ''}>${e(categoryLabel(c.name))}</option>`).join('')}
             </select>
@@ -77,12 +77,15 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
 
   const objectUrls = [];
   let finished = false;
+  let attempted = false; // пытались добавлять — значит, решение по строкам принято
   const close = async (added) => {
     if (finished) return;
     finished = true;
-    // И добавленные, и отклонённые больше не предлагаем
-    markSeen(rows.flatMap(seenKeys));
-    await clearInbox(rows);
+    // Закрыли не добавляя — это отказ от всех; после попытки — снимаем галочки-отказы,
+    // а не записавшиеся из-за сети остаются (предложим снова)
+    const done = attempted ? rows.filter((r) => r.added || !r.checked) : rows;
+    markSeen(done.flatMap(seenKeys));
+    await clearInbox(done);
     objectUrls.forEach((u) => URL.revokeObjectURL(u));
     backdrop.remove();
     onDone?.(added);
@@ -156,6 +159,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
     const payerId = backdrop.querySelector('.payer-option.selected')?.dataset.id || (isSolo() ? profile.id : 'shared');
     const isShared = payerId === 'shared';
     btn.disabled = true;
+    attempted = true;
     btn.textContent = t('capture.adding');
     let added = 0;
     const created = [];
@@ -178,6 +182,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
           receipt_url: receiptPath,
         }));
         added += 1;
+        r.added = true;
         // Сразу помечаем добавленным — если приложение закроют посреди списка, слип не задвоится
         markSeen(seenKeys(r));
         await clearInbox([r]);

@@ -1,0 +1,5 @@
+"NSPhotoLibraryUsageDescription" = "CoupleExpenses looks for TrueMoney and Thai bank payment slips in your photos. Slips are read on your iPhone; a slip you choose to add is attached to that expense as its receipt.";
+"NSCameraUsageDescription" = "The camera scans payment QR codes and receipts to fill in an expense for you.";
+"NSMicrophoneUsageDescription" = "The microphone lets you add an expense by voice — just say it, like “coffee 120”.";
+"NSSpeechRecognitionUsageDescription" = "Speech recognition turns what you say into an expense: amount, description and category.";
+"NSFaceIDUsageDescription" = "Face ID protects access to your finances.";

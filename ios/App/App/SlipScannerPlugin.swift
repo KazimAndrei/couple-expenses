@@ -4,6 +4,7 @@ import Photos
 import Vision
 import UIKit
 import AVFoundation
+import WidgetKit
 
 // Нативная часть импорта слипов: поиск в Фото, распознавание текста и QR (Apple Vision,
 // на устройстве), сканер QR и входящие из расширения «Поделиться». Разбор смысла — в src/lib/slips.js.
@@ -20,9 +21,47 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "takeInbox", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearInbox", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setWidgetData", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeLaunchUrl", returnType: CAPPluginReturnPromise),
     ]
 
     private let work = DispatchQueue(label: "slip-scanner", qos: .userInitiated)
+
+    // Ссылки coupleexpenses://… (виджеты, «Поделиться»). Капаситор рассылает их уведомлением;
+    // на холодном старте JS ещё не подписан — последнюю ссылку держим до takeLaunchUrl.
+    private static var pendingUrl: String?
+
+    override public func load() {
+        NotificationCenter.default.addObserver(self, selector: #selector(onOpenUrl(_:)), name: .capacitorOpenURL, object: nil)
+    }
+
+    @objc private func onOpenUrl(_ note: Notification) {
+        guard let url = (note.object as? [String: Any])?["url"] as? URL, url.scheme == "coupleexpenses" else { return }
+        if hasListeners("openUrl") {
+            notifyListeners("openUrl", data: ["url": url.absoluteString])
+        } else {
+            Self.pendingUrl = url.absoluteString
+        }
+    }
+
+    static func rememberLaunchUrl(_ url: URL) {
+        if url.scheme == "coupleexpenses" { pendingUrl = url.absoluteString }
+    }
+
+    @objc func takeLaunchUrl(_ call: CAPPluginCall) {
+        let url = Self.pendingUrl
+        Self.pendingUrl = nil
+        call.resolve(url.map { ["url": $0] } ?? [:])
+    }
+
+    @objc func setWidgetData(_ call: CAPPluginCall) {
+        let json = call.getString("json") ?? ""
+        work.async {
+            WidgetStore.write(json)
+            if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
+            call.resolve()
+        }
+    }
 
     // MARK: - Доступ к Фото
 
@@ -74,9 +113,13 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
                 // Не держим JS дольше 25 с: остальное досмотрим при следующей проверке
                 if Date().timeIntervalSince(started) > 25 { stop.pointee = true; return }
                 let created = (asset.creationDate?.timeIntervalSince1970 ?? 0) * 1000
+                // Фото не загрузилось (качается из iCloud) — останавливаемся перед ним, чтобы досмотреть позже
+                guard let image = autoreleasepool(invoking: { self.loadImage(asset, maxSide: 1600) }) else {
+                    stop.pointee = true
+                    return
+                }
                 processedUntil = max(processedUntil, created)
                 processed += 1
-                guard let image = self.loadImage(asset, maxSide: 1600) else { return }
                 // Сначала дешёвые проверки: QR проверки (есть почти на всех тайских слипах),
                 // скриншот или быстрый поиск слов «฿ / THB / Amount / PromptPay» без тайского.
                 // Полное распознавание — только для прошедших; обычные фото не трогаем.
@@ -191,29 +234,17 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // MARK: - Входящие из расширения «Поделиться»
-    // Расширение кладёт картинки в именованный буфер обмена (видят только приложения нашей команды):
-    // App Group для этого не нужен. Элемент — JPEG и id «<ms>-<uuid>.jpg».
-
-    static let inboxBoard = "com.kazimandrei.coupleexpenses.inbox"
-    static let idType = "com.kazimandrei.coupleexpenses.inbox-id"
-
-    private func inboxEntries() -> [(id: String, data: Data)] {
-        guard let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: false) else { return [] }
-        return board.items.compactMap { item in
-            guard let id = item[Self.idType] as? String else { return nil }
-            if let data = item["public.jpeg"] as? Data { return (id, data) }
-            if let image = item["public.jpeg"] as? UIImage, let data = image.jpegData(compressionQuality: 0.85) { return (id, data) }
-            return nil
-        }
-    }
+    // Расширение кладёт картинки в общий keychain команды (ShareInbox, Shared/WidgetStore.swift)
 
     @objc func takeInbox(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            let entries = self.inboxEntries()
-            self.work.async {
-                var items: [[String: Any]] = []
-                for (id, data) in entries {
-                    guard let cg = UIImage(data: data)?.normalizedCGImage(maxSide: 2200) else { continue }
+        work.async {
+            var items: [[String: Any]] = []
+            for id in ShareInbox.ids().prefix(10) {
+                autoreleasepool {
+                    guard let data = ShareInbox.data(id), let cg = UIImage(data: data)?.normalizedCGImage(maxSide: 2200) else {
+                        ShareInbox.remove(id) // битая запись — не показываем её вечно
+                        return
+                    }
                     let created = Double(id.split(separator: "-").first ?? "") ?? Date().timeIntervalSince1970 * 1000
                     items.append([
                         "id": id,
@@ -223,20 +254,15 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
                         "lines": SlipVision.recognizeText(cg),
                     ])
                 }
-                call.resolve(["items": items])
             }
+            call.resolve(["items": items])
         }
     }
 
     @objc func clearInbox(_ call: CAPPluginCall) {
-        let ids = Set(call.getArray("ids", String.self) ?? [])
-        DispatchQueue.main.async {
-            if let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: false) {
-                board.items = board.items.filter { item in
-                    guard let id = item[Self.idType] as? String else { return false }
-                    return !ids.contains(id)
-                }
-            }
+        let ids = call.getArray("ids", String.self) ?? []
+        work.async {
+            ids.forEach { ShareInbox.remove($0) }
             call.resolve()
         }
     }

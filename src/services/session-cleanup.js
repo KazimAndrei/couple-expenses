@@ -1,14 +1,17 @@
 import { clearQueue } from './offline-queue.js';
 import { unregisterNativePush } from './native-push.js';
 import { logOutPurchases } from './purchases.js';
+import { clearWidgets } from './widgets.js';
 
 // Всё, что должно умереть вместе с сессией. Раньше эти ключи чистились в разных местах
 // по-разному, и часть переживала выход: флаг пропуска пейволла давал следующему аккаунту
 // бесплатное создание пары, а чужой инвайт-код автоматически подставлялся новому юзеру.
 const SESSION_KEYS = ['ce_paywall_skip', 'ce_setup_name'];
-const LOCAL_KEYS = ['ce_pending_invite', 'ce_pending_currency', 'ce_biometric_lock', 'ce_data_cache_v1'];
+const LOCAL_KEYS = ['ce_pending_invite', 'ce_pending_currency', 'ce_biometric_lock', 'ce_data_cache_v1', 'ce_slip_import_v1'];
 
 export async function clearSessionState() {
+  // Первым делом — виджеты: сетевые шаги ниже могут долго висеть
+  await clearWidgets().catch(() => {});
   for (const k of SESSION_KEYS) {
     try { sessionStorage.removeItem(k); } catch { /* приватный режим */ }
   }

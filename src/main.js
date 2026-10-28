@@ -20,6 +20,9 @@ import { registerAnalyticsRoute } from './pages/analytics-page.js';
 import { registerGoalsRoute } from './pages/goals-page.js';
 import { registerProfileRoute } from './pages/profile-page.js';
 import { registerPaywallRoute } from './pages/paywall-page.js';
+import { subscribe } from './lib/store.js';
+import { clearWidgets, syncWidgets } from './services/widgets.js';
+import { initDeepLinks } from './services/deep-links.js';
 
 // Класс scrolled включает стеклянную подложку у шапки и липких чипов (см. app.css)
 const syncScrolled = () => document.body.classList.toggle('scrolled', window.scrollY > 4);
@@ -153,6 +156,8 @@ async function init() {
       navigate('/setup');
     } else {
       diagStep('init: not authenticated');
+      // После переустановки keychain со снимком виджета остаётся — без входа его не показываем
+      clearWidgets();
       setState({ loading: false });
       if (!getCurrentPath().startsWith('/invite')) navigate('/auth');
     }
@@ -183,8 +188,16 @@ function setupOfflineBanner() {
   update();
 }
 
+// Виджеты обновляем после любых изменений данных — с паузой, чтобы не дёргать WidgetKit на каждый setState
+let widgetTimer = null;
+subscribe(() => {
+  clearTimeout(widgetTimer);
+  widgetTimer = setTimeout(syncWidgets, 1500);
+});
+
 initTheme();
 initDiagnostics();
+initDeepLinks();
 exposeToastGlobally();
 setupOfflineBanner();
 init();

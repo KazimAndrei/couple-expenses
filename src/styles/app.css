@@ -836,9 +836,9 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .pay-desc:focus { border-bottom:1px solid var(--c-border-strong); }
 .pay-meta { font-size:12px; color:var(--c-text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pay-cat { margin-top:3px; max-width:100%; border:1px solid var(--c-border); border-radius:10px; background:var(--c-surface); color:var(--c-text); font:500 13px var(--font); padding:5px 8px; -webkit-appearance:none; }
-.pay-amount { display:flex; align-items:baseline; justify-content:flex-end; gap:1px; font-weight:700; max-width:120px; }
+.pay-amount { display:flex; align-items:baseline; justify-content:flex-end; gap:1px; font-weight:700; max-width:150px; }
 .pay-amount span { font-size:13px; color:var(--c-text-secondary); }
-.pay-amount input { min-width:0; max-width:104px; text-align:right; border:0; background:transparent; font:700 16px var(--font); color:var(--c-text); outline:none; padding:2px 0; }
+.pay-amount input { min-width:0; max-width:132px; text-align:right; border:0; background:transparent; font:700 16px var(--font); color:var(--c-text); outline:none; padding:2px 0; }
 .capture-banner { display:grid; grid-template-columns:40px 1fr auto; gap:12px; align-items:center; margin:0 16px 14px; padding:14px; border-radius:20px; background:var(--c-surface); border:1px solid var(--c-border); box-shadow:0 8px 24px -16px rgba(0,0,0,.35); }
 .capture-banner-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:linear-gradient(140deg,#ef9f27,#e8735a); }
 .capture-banner-text { display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--c-text-secondary); line-height:1.35; }
@@ -863,7 +863,7 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .fi-card-icon { flex:none; width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,#ef9f27,#e8735a); display:flex; align-items:center; justify-content:center; }
 .fi-card-text { display:flex; flex-direction:column; min-width:0; text-align:left; }
 .fi-card-text b { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.fi-card-text small { font-size:11px; color:#5f6b66; white-space:nowrap; }
+.fi-card-text small { font-size:11px; color:#5f6b66; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fi-btn { display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:12px; background:rgba(255,255,255,.2); color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; animation:howtoPress 9s infinite; }
 .fi-btn.wide { background:#fff; color:#0f3d33; padding:10px 18px; }
 .fi-qr { position:relative; display:grid; grid-template-columns:repeat(4,14px); gap:3px; padding:8px; border-radius:8px; background:#fff; overflow:hidden; }
@@ -888,3 +888,5 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .fi-sheetrow { display:flex; gap:10px; padding:12px; border-radius:14px; background:rgba(255,255,255,.9); }
 .fi-sheetrow span { width:34px; height:34px; border-radius:9px; background:#d5dbd8; display:flex; align-items:center; justify-content:center; }
 .fi-sheetrow span.app { background:linear-gradient(135deg,#1d9e75,#e8735a); animation:howtoPress 9s infinite; }
+
+.pay-dup { color: var(--c-danger); font-weight:600; }

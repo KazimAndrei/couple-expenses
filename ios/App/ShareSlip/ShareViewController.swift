@@ -1,9 +1,10 @@
 import UIKit
 import UniformTypeIdentifiers
 import PDFKit
+import ImageIO
 
 // «Поделиться → CoupleExpenses»: слип, чек или счёт (картинка/PDF) кладётся во входящие
-// (именованный буфер обмена приложения), после чего открывается приложение —
+// (общий keychain, Shared/WidgetStore.swift), после чего открывается приложение —
 // там распознаём и предлагаем добавить расход.
 final class ShareViewController: UIViewController {
     private let spinner = UIActivityIndicatorView(style: .large)
@@ -47,9 +48,9 @@ final class ShareViewController: UIViewController {
         }
         guard provider.hasItemConformingToTypeIdentifier(UTType.image.identifier),
               let item = try? await provider.loadItem(forTypeIdentifier: UTType.image.identifier) else { return nil }
-        if let image = item as? UIImage { return image }
-        if let url = item as? URL, let data = try? Data(contentsOf: url) { return UIImage(data: data) }
-        if let data = item as? Data { return UIImage(data: data) }
+        if let url = item as? URL { return thumbnail(CGImageSourceCreateWithURL(url as CFURL, nil)) }
+        if let data = item as? Data { return thumbnail(CGImageSourceCreateWithData(data as CFData, nil)) }
+        if let image = item as? UIImage { return downscaled(image) }
         return nil
     }
 
@@ -61,23 +62,27 @@ final class ShareViewController: UIViewController {
         return page.thumbnail(of: CGSize(width: box.width * scale, height: box.height * scale), for: .mediaBox)
     }
 
-    // Передаём картинку через именованный буфер обмена: его видят только приложения той же
-    // команды разработчика (без App Group и без запроса «Разрешить вставку»)
+    // Передаём картинку через общий keychain команды (тот же, что у виджетов): запись переживает
+    // и выход расширения, и перезагрузку; приложение заберёт и удалит её при открытии
     private func save(_ image: UIImage) -> Bool {
-        guard let data = downscaled(image).jpegData(compressionQuality: 0.85),
-              let board = UIPasteboard(name: UIPasteboard.Name(Self.inboxBoard), create: true) else { return false }
-        let id = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString).jpg"
-        board.addItems([[Self.idType: id, "public.jpeg": data]])
-        return true
+        guard let data = image.jpegData(compressionQuality: 0.75) else { return false }
+        return ShareInbox.add(data)
     }
 
-    static let inboxBoard = "com.kazimandrei.coupleexpenses.inbox"
-    static let idType = "com.kazimandrei.coupleexpenses.inbox-id"
+    // Уменьшаем прямо при чтении: полноразмерное фото 48 Мп не влезло бы в лимит памяти расширения
+    private func thumbnail(_ source: CGImageSource?) -> UIImage? {
+        guard let source else { return nil }
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceCreateThumbnailWithTransform: true,
+                                     kCGImageSourceThumbnailMaxPixelSize: 1800]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
 
     private func downscaled(_ image: UIImage) -> UIImage {
         let side = max(image.size.width, image.size.height)
-        guard side > 2200 else { return image }
-        let k = 2200 / side
+        guard side > 1800 else { return image }
+        let k = 1800 / side
         let size = CGSize(width: image.size.width * k, height: image.size.height * k)
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1

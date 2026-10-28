@@ -10,8 +10,9 @@ export function parseTlv(str) {
   let i = 0;
   while (i + 4 <= str.length) {
     const id = str.slice(i, i + 2);
-    const len = Number(str.slice(i + 2, i + 4));
-    if (!/^\d{2}$/.test(id) || !Number.isInteger(len) || i + 4 + len > str.length) return null;
+    const lenRaw = str.slice(i + 2, i + 4);
+    const len = Number(lenRaw);
+    if (!/^\d{2}$/.test(id) || !/^\d{2}$/.test(lenRaw) || i + 4 + len > str.length) return null;
     out.push({ id, value: str.slice(i + 4, i + 4 + len) });
     i += 4 + len;
   }
@@ -19,10 +20,12 @@ export function parseTlv(str) {
 }
 
 // CRC16-CCITT (0x1021, начальное 0xFFFF) — контрольная сумма EMVCo, тег 63
+// Считаем по байтам UTF-8: в QR с тайским названием магазина символы многобайтные
 export function crc16(str) {
   let crc = 0xffff;
-  for (let i = 0; i < str.length; i++) {
-    crc ^= str.charCodeAt(i) << 8;
+  const bytes = new TextEncoder().encode(str);
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i] << 8;
     for (let b = 0; b < 8; b++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
   }
   return crc.toString(16).toUpperCase().padStart(4, '0');
@@ -40,7 +43,7 @@ export function parsePromptPayQr(payload) {
   const crcOk = crcTag ? crc16(raw.slice(0, raw.length - 4)) === crcTag.toUpperCase() : false;
   const currency = tag(tlv, '53');
   const amountRaw = tag(tlv, '54');
-  const amount = amountRaw && Number.isFinite(Number(amountRaw)) ? Number(amountRaw) : null;
+  const amount = amountRaw && /^\d+(\.\d{1,2})?$/.test(amountRaw) ? Number(amountRaw) : null;
   // 29 — PromptPay перевод (01 телефон, 02 ID, 03 e-wallet), 30 — оплата счёта
   const credit = parseTlv(tag(tlv, '29') || '') || [];
   const bill = parseTlv(tag(tlv, '30') || '') || [];
@@ -77,6 +80,10 @@ export function parseSlipVerifyQr(payload) {
 const MONTHS_EN = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 // Тайские сокращения месяцев без точек и пробелов (OCR их теряет)
 const MONTHS_TH = { มค: 1, กพ: 2, มีค: 3, เมย: 4, พค: 5, มิย: 6, กค: 7, สค: 8, กย: 9, ตค: 10, พย: 11, ธค: 12 };
+// Полные тайские названия месяцев
+const MONTHS_TH_FULL = { มกราคม: 1, กุมภาพันธ์: 2, มีนาคม: 3, เมษายน: 4, พฤษภาคม: 5, มิถุนายน: 6, กรกฎาคม: 7, สิงหาคม: 8, กันยายน: 9, ตุลาคม: 10, พฤศจิกายน: 11, ธันวาคม: 12 };
+// Тайские цифры ๐-๙ → 0-9
+const thaiDigits = (s) => String(s).replace(/[๐-๙]/g, (c) => String(c.charCodeAt(0) - 0x0e50));
 
 const PROVIDERS = [
   ['TrueMoney', /true\s*money/i],
@@ -92,10 +99,13 @@ const PROVIDERS = [
   ['LINE BK', /line\s*bk/i],
 ];
 
-const TOTAL_LABEL = /grand\s*total|net\s*total|total\s*amount|amount\s*due|total\s*due|รวมทั้งสิ้น|ยอดรวมสุทธิ|ยอดสุทธิ|ยอดที่ต้องชำระ/i;
-const AMOUNT_LABEL = /amount|total|จำนวนเงิน|จำนวน|ยอดเงิน|ยอดชำระ|ยอดโอน|รวม/i;
-const NOT_AMOUNT = /fee|ค่าธรรมเนียม|balance|คงเหลือ|available|cash\s*back|discount|ส่วนลด/i;
-const SLIP_WORDS = /success|completed|transaction|reference|ref\.?\s*no|โอนเงินสำเร็จ|ชำระเงินสำเร็จ|สำเร็จ|รหัสอ้างอิง|เลขที่รายการ|promptpay|พร้อมเพย์/i;
+const TOTAL_LABEL = /grand\s*total|net\s*total|total\s*amount|amount\s*due|total\s*due|^net\b|\bnet\s*(amount|pay)|รวมทั้งสิ้น|ยอดรวมสุทธิ|ยอดสุทธิ|ยอดที่ต้องชำระ/i;
+const AMOUNT_LABEL = /amount|(?<!sub\s?-?)total|จำนวนเงิน|จำนวน|ยอดเงิน|ยอดชำระ|ยอดโอน|รวม/i;
+const NOT_AMOUNT = /fee|ค่าธรรมเนียม|balance|คงเหลือ|available|cash\s*back|discount|ส่วนลด|sub\s?-?total|ยอดก่อน|\bvat\b|ภาษี|service\s*charge|items?\b/i;
+// Признак успешной оплаты; одних слов «transaction/reference» мало — так выглядят и брони, и чаты
+const SUCCESS_WORDS = /success|completed|โอนเงินสำเร็จ|ชำระเงินสำเร็จ|สำเร็จ|paid\b|ชำระแล้ว/i;
+// Входящий перевод — это не расход
+const INCOMING = /\breceived\b|รับเงิน|เงินเข้า|you\s+got|incoming|^\+\s*[\d,]+/im;
 const MONEY = /(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?!\d)/;
 // Маска имени («KAZ****») — не счёт; счёт — маска рядом с дефисом/цифрами или длинный номер
 const ACCOUNTISH = /[xX*]{2,}[-_]|[-_][xX*]{2,}|[xX*]{3}-|\d[xX*]+\d|\d{2,}[-_]\S*\d|\(\d{6,}\)|\b\d{9,}\b|account|wallet|บัญชี/i;
@@ -120,8 +130,14 @@ export function toRows(lines) {
 }
 
 function moneyIn(text) {
-  const m = String(text).replace(/(\d)\s+(?=[,.]?\d{2,3}\b)/g, '$1').match(MONEY);
-  return m ? Number(m[1].replace(/,/g, '') + '.' + m[2]) : null;
+  // OCR иногда разрывает тысячи пробелом («1 794.74»); время «14:22 500.00» склеивать нельзя
+  const t = String(text).replace(/(?<![:.\d])(\d{1,3})\s+(?=\d{3}\.\d{2}(?!\d))/g, '$1');
+  const m = t.match(MONEY);
+  if (m) return Number(m[1].replace(/,/g, '') + '.' + m[2]);
+  // Целая сумма рядом с валютой: «฿ 50», «1,200 THB»
+  const c = t.match(/(?:฿|THB|baht|บาท)\s*((?:\d{1,3}(?:,\d{3})+|\d+))(?![\d.,])|(?<![\d.,:])((?:\d{1,3}(?:,\d{3})+|\d+))\s*(?:฿|THB|baht|บาท)/i);
+  const v = c && (c[1] || c[2]);
+  return v ? Number(v.replace(/,/g, '')) : null;
 }
 
 function findAmount(rows) {
@@ -150,12 +166,14 @@ function amountByLabel(rows, label) {
 
 function amountByLook(rows) {
   // 2. Самая крупная сумма с ฿ / THB / บาท (заголовок слипа)
+  const afterNot = (r) => { const i = rows.indexOf(r); return i > 0 && NOT_AMOUNT.test(rows[i - 1].text) && !moneyIn(rows[i - 1].text); };
   const withCurrency = rows
-    .filter((r) => /฿|THB|บาท|baht/i.test(r.text) && !NOT_AMOUNT.test(r.text) && moneyIn(r.text))
+    .filter((r) => /฿|THB|บาท|baht/i.test(r.text) && !NOT_AMOUNT.test(r.text) && !afterNot(r) && moneyIn(r.text))
     .sort((a, b) => b.h - a.h);
   if (withCurrency.length) return moneyIn(withCurrency[0].text);
   // 3. Самая крупная строка, похожая на сумму
-  const any = rows.filter((r) => !NOT_AMOUNT.test(r.text) && /^[฿\s]*[\d,]+\.\d{2}\b/.test(r.text)).sort((a, b) => b.h - a.h);
+  const any = rows.filter((r) => !NOT_AMOUNT.test(r.text) && !afterNot(r) && /^[฿\s]*[\d,]+\.\d{2}\b/.test(r.text)).sort((a, b) => b.h - a.h);
+  // Экран баланса: крупная сумма под «Available balance» — не платёж
   return any.length ? moneyIn(any[0].text) : null;
 }
 
@@ -170,6 +188,12 @@ function resolveYear(y, thaiMonth, now) {
 }
 
 const pad = (n) => String(n).padStart(2, '0');
+const to24 = (h, ampm) => {
+  const m = String(ampm || '').toLowerCase();
+  if (m === 'pm' && h < 12) return h + 12;
+  if (m === 'am' && h === 12) return 0;
+  return h;
+};
 
 export function findDateTime(rows, now = new Date()) {
   // Сначала строки с подписью «Date / วันที่» (но не «Due date»), потом любые
@@ -179,11 +203,18 @@ export function findDateTime(rows, now = new Date()) {
 
 function dateIn(rows, now) {
   for (const r of rows) {
-    const text = r.text;
-    const time = text.match(/\b(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\b(?!\.\d)/);
+    const text = thaiDigits(r.text);
+    const time = text.match(/\b(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\b(?!\.\d)\s*(am|pm|น\.)?/i);
     let d = null;
+    const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (iso) d = { day: +iso[3], month: +iso[2], year: resolveYear(iso[1], false, now) };
+    // «Oct 28, 2026» — месяц первым
+    const mf = !d && text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b/i);
+    if (mf) d = { day: +mf[2], month: MONTHS_EN[mf[1].toLowerCase()], year: resolveYear(mf[3], false, now) };
+    const full = !d && text.match(/(\d{1,2})\s*([ก-๙]{5,})\s*(\d{4}|\d{2})\b(?![:.]\d)/);
+    if (full && MONTHS_TH_FULL[full[2]]) d = { day: +full[1], month: MONTHS_TH_FULL[full[2]], year: resolveYear(full[3], true, now) };
     // Двузначный год не должен оказаться часами: «5 May, 14:30» — без года
-    const en = text.match(/\b(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s*(\d{4}|\d{2})\b(?![:.]\d)/i);
+    const en = d ? null : text.match(/\b(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s*(\d{4}|\d{2})\b(?![:.]\d)/i);
     if (en) d = { day: +en[1], month: MONTHS_EN[en[2].toLowerCase()], year: resolveYear(en[3], false, now) };
     if (!d) {
       const th = text.match(/(\d{1,2})\s*((?:[ก-๙]\s*\.?\s*){2,4})\s*(\d{4}|\d{2})\b(?![:.]\d)/);
@@ -199,7 +230,7 @@ function dateIn(rows, now) {
     if (real) {
       return {
         date: `${d.year}-${pad(d.month)}-${pad(d.day)}`,
-        time: time && +time[1] < 24 ? `${pad(time[1])}:${time[2]}` : null,
+        time: time && +time[1] < 24 ? `${pad(to24(+time[1], time[4]))}:${time[2]}` : null,
       };
     }
   }
@@ -227,7 +258,9 @@ export function tidyName(name) {
   // Маскированный хвост фамилии («K* * *» → «K») — одиночная буква не несёт смысла
   s = s.replace(/\s+[A-Za-z]$/, '').trim();
   if (s && s === s.toUpperCase() && /[A-Z]/.test(s)) {
-    s = s.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    // Короткие аббревиатуры (KFC, SCB, H&M) оставляем; после апострофа заглавную не ставим (McDonald's)
+    s = s.split(' ').map((w) => (/^[A-Z&]{2,3}$/.test(w) ? w
+      : w.toLowerCase().replace(/(^|-)([a-z])/g, (m, p, c) => p + c.toUpperCase()).replace(/^Mc([a-z])/, (m, c) => `Mc${c.toUpperCase()}`))).join(' ');
   }
   return s;
 }
@@ -239,17 +272,20 @@ function findParties(rows) {
     const r = rows[i];
     if (!isPartyName(r.text)) continue;
     const below = rows.slice(i + 1, i + 3).map((x) => x.text).join(' ');
-    if (ACCOUNTISH.test(below) || /promptpay|พร้อมเพย์|wallet|krungthai|kasikorn|scb|bank|ธนาคาร/i.test(below)) parties.push(r.text);
+    if (ACCOUNTISH.test(below) || /promptpay|พร้อมเพย์|wallet|krungthai|kasikorn|scb|bank|ธนาคาร/i.test(below)) {
+      parties.push({ text: r.text, isFrom: /\bfrom\b|จาก|ผู้โอน/i.test(below) || /\bfrom\b|จาก/i.test(rows[i - 1]?.text || '') });
+    }
   }
   // Подписи «To / ไปยัง / ผู้รับ» — запасной путь
   const toIdx = rows.findIndex((r) => /^(to|ไปยัง|ถึง|ผู้รับ|receiver|recipient)\b/i.test(r.text));
-  let receiver = parties[1] || null;
+  let receiver = parties[1]?.text || null;
   if (!receiver && toIdx >= 0) {
     const inline = rows[toIdx].text.replace(/^(to|ไปยัง|ถึง|ผู้รับ|receiver|recipient)\s*:?\s*/i, '');
     receiver = inline && isPartyName(inline) ? inline : rows.slice(toIdx + 1).find((r) => isPartyName(r.text))?.text || null;
   }
-  if (!receiver && parties.length === 1) receiver = parties[0];
-  return { sender: parties[0] || null, receiver };
+  // Единственный найденный участник — получатель, только если это не отправитель («From wallet»)
+  if (!receiver && parties.length === 1 && !parties[0].isFrom) receiver = parties[0].text;
+  return { sender: parties[0]?.text || null, receiver };
 }
 
 function findReference(rows) {
@@ -270,7 +306,8 @@ function findVendor(rows) {
   const company = rows.find((r) => COMPANY.test(r.text) && !/account|name of bank/i.test(r.text));
   const pick = company?.items.find((i) => COMPANY.test(i.t))?.t || company?.text;
   if (pick) return pick.replace(/\(?(co\.?,?\s*ltd\.?|company\s+limited|limited|ltd\.?)\)?\.?/gi, '').replace(/^(บริษัท|บจก\.?)\s*/, '').replace(/\s*จำกัด.*$/, '').trim();
-  const top = rows.filter((r) => r.y < 0.25 && !DOC_WORDS.test(r.text) && /[A-Za-zก-๙]{3}/.test(r.text) && !MONEY.test(r.text)).sort((a, b) => b.h - a.h)[0];
+  const top = rows.filter((r) => r.y < 0.25 && !DOC_WORDS.test(r.text) && /[A-Za-zก-๙]{3}/.test(r.text) && !MONEY.test(r.text)
+    && !/\d/.test(r.text) && !LABELISH.test(r.text) && !/:/.test(r.text)).sort((a, b) => b.h - a.h)[0];
   return top?.text || null;
 }
 
@@ -284,7 +321,10 @@ export function parseSlip({ lines = [], qr = [] } = {}, now = new Date()) {
   const { date, time } = findDateTime(rows, now);
   const { receiver } = findParties(rows);
   const reference = verify?.transRef || findReference(rows);
-  const looksLikeSlip = !!verify || ((!!provider || SLIP_WORDS.test(fullText)) && !!date && !DOC_WORDS.test(fullText));
+  // Без QR проверки нужен успех оплаты + банк или номер операции: иначе это чат, бронь или экран баланса
+  const success = SUCCESS_WORDS.test(fullText);
+  const looksLikeSlip = !INCOMING.test(fullText) && (!!verify
+    || (!!date && !DOC_WORDS.test(fullText) && success && (!!provider || !!reference)));
   const looksLikeDoc = !looksLikeSlip && (DOC_WORDS.test(fullText) || TOTAL_LABEL.test(fullText));
   const vendor = looksLikeDoc ? findVendor(rows) : null;
   return {
@@ -298,7 +338,9 @@ export function parseSlip({ lines = [], qr = [] } = {}, now = new Date()) {
     receiver: vendor ? tidyName(vendor) : receiver && looksLikeSlip ? tidyName(receiver) : null,
     provider,
     reference,
-    key: verify?.transRef ? `ref:${verify.transRef}` : reference ? `ref:${reference}` : null,
+    // Без номера операции — отпечаток: сумма + дата + время (одинаков у одного слипа из Фото и из «Поделиться»)
+    key: verify?.transRef ? `ref:${verify.transRef}` : reference ? `ref:${reference}`
+      : amount && date && time ? `fp:${amount}|${date}|${time}` : null,
     text: fullText,
   };
 }
@@ -306,13 +348,14 @@ export function parseSlip({ lines = [], qr = [] } = {}, now = new Date()) {
 // ---- Категория по получателю ----
 
 const CATEGORY_HINTS = [
-  ['Housing', /property|rent\b|room\s*charge|apartment|condo|residence|villa\b|ค่าเช่า|อพาร์ท|คอนโด|electricity|water\s*supply|ค่าไฟ|ค่าน้ำ/i],
-  ['Groceries', /tops|7-?eleven|7-?11|lotus|big\s*c|makro|foodland|villa\s*market|gourmet|family\s*mart|lawson|cj\s*(more|express)|rimping|supermarket|ซูเปอร์|โลตัส|บิ๊กซี|เซเว่น/i],
-  ['Restaurants', /starbucks|caf[eé]|coffee|restaurant|kfc|mcdonald|burger|pizza|sushi|bar\b|food|kitchen|grill|bistro|ร้านอาหาร|กาแฟ|ข้าว/i],
-  ['Transport', /grab|bolt|bts|mrt|\bptt\b|shell|bangchak|esso|caltex|taxi|airport|parking|น้ำมัน/i],
-  ['Health', /pharmacy|hospital|clinic|boots|watsons|dental|ร้านยา|โรงพยาบาล|คลินิก/i],
-  ['Entertainment', /cinema|major|sf\s*cinema|cineplex|ticket|bowling|karaoke/i],
-  ['Clothing', /uniqlo|h&m|zara|central|robinson|decathlon/i],
+  // Магазины — раньше жилья и ресторанов: «Villa Market», «Central Food Retail» (Tops)
+  ['Groceries', /\btops\b|7-?eleven|\b7-?11\b|\blotus|big\s*c\b|\bmakro\b|foodland|villa\s*market|gourmet|family\s*mart|lawson|cj\s*(more|express)|rimping|supermarket|central\s*food|food\s*retail|ซูเปอร์|โลตัส|บิ๊กซี|เซเว่น/i],
+  ['Housing', /property|\brent\b|room\s*charge|apartment|\bcondo|residence|ค่าเช่า|อพาร์ท|คอนโด|electricity|water\s*supply|ค่าไฟ|ค่าน้ำ/i],
+  ['Restaurants', /starbucks|caf[eé]\b|coffee|restaurant|\bkfc\b|mcdonald|burger|pizza|sushi|\bbar\b|\bfood\b|kitchen|\bgrill|bistro|ร้านอาหาร|กาแฟ|ข้าว/i],
+  ['Transport', /\bgrab\b|\bbolt\b|\bbts\b|\bmrt\b|\bptt\b|\bshell\b|bangchak|\besso\b|caltex|\btaxi\b|airport|parking|น้ำมัน/i],
+  ['Health', /pharmacy|hospital|clinic|\bboots\b|watsons|dental|ร้านยา|โรงพยาบาล|คลินิก/i],
+  ['Entertainment', /cinema|\bmajor\s*cineplex|sf\s*cinema|cineplex|ticket|bowling|karaoke/i],
+  ['Clothing', /uniqlo|h&m|\bzara\b|central\s*(department|world|festival)|robinson|decathlon/i],
   ['Subscriptions', /netflix|spotify|youtube|apple\.com|icloud|\bais\b|true\s*move|dtac|internet/i],
 ];
 
