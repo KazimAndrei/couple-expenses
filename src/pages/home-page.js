@@ -12,6 +12,11 @@ import { loadAll, loadExpenses } from '../services/data-loader.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
+import { clearInbox, collectPayments, isCaptureAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
+import { openPaymentsReviewSheet } from '../components/payments-review-sheet.js';
+import { showFeatureIntro } from '../components/feature-intro.js';
+import { guessCategoryId, parsePromptPayQr, slipCategoryId, slipDescription } from '../lib/slips.js';
+import { parseVoiceExpense } from '../lib/voice.js';
 import {
   MISSING_PARTNER_ID,
   expenseJoinedProfileName,
@@ -65,7 +70,8 @@ function applyAdvancedFilters(expenses, filters) {
   });
 }
 
-async function showAddExpenseModal() {
+// prefill — данные из голоса, QR, слипа или скана чека: { amount, description, categoryId, date, payer, receiptBlob }
+export async function showAddExpenseModal(prefill = {}) {
   const { categories, profile, couple, members } = getState();
   let goals = [];
   try {
@@ -74,8 +80,10 @@ async function showAddExpenseModal() {
   const lastPrefs = readLastExpensePrefs();
   const sides = resolveMemberSides(members);
   const payerMembers = [sides.memberA, sides.memberB].filter(Boolean);
-  const defaultCategoryId = categories.find(c => c.id === lastPrefs.categoryId)?.id || categories[0]?.id;
+  const defaultCategoryId = categories.find(c => c.id === prefill.categoryId)?.id
+    || categories.find(c => c.id === lastPrefs.categoryId)?.id || categories[0]?.id;
   const defaultDate = todayStr();
+  const capture = isCaptureAvailable();
   const defaultPayerId = lastPrefs.payerId === 'shared' ? 'shared' : (payerMembers.some((m) => m.id === lastPrefs.payerId) ? lastPrefs.payerId : 'shared');
 
   const currSymbol = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '$';
@@ -88,6 +96,13 @@ async function showAddExpenseModal() {
      <div class="sheet-body">
       <div class="modal-handle"></div>
       <div class="modal-title">${t('home.newExpense')}</div>
+      ${capture ? `
+      <div class="capture-actions">
+        <button type="button" class="capture-btn" id="btn-voice">${icon('mic', 18)}<span>${t('capture.voice')}</span></button>
+        <button type="button" class="capture-btn" id="btn-scan-qr">${icon('qr-code', 18)}<span>${t('capture.qr')}</span></button>
+        <button type="button" class="capture-btn" id="btn-scan-receipt">${icon('scan-text', 18)}<span>${t('capture.scan')}</span></button>
+        <input type="file" id="scan-input" accept="image/*" style="display:none;">
+      </div>` : ''}
       <label class="amount-hero" for="exp-amount">
         <span class="amount-currency">${e(currSymbol)}</span>
         <input type="number" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01" aria-label="${t('common.amount')}">
@@ -191,13 +206,128 @@ async function showAddExpenseModal() {
     hapticSelect();
   });
 
-  setTimeout(() => document.getElementById('exp-amount')?.focus(), 300);
+  // Чек из слипа/скана прикладываем без файлового input — держим Blob здесь
+  let receiptBlob = prefill.receiptBlob || null;
+  const markReceipt = (on) => {
+    document.getElementById('receipt-name').textContent = on ? t('home.receiptShort') : t('home.receipt');
+    document.getElementById('btn-attach-receipt').classList.toggle('on', on);
+  };
+  const applyPrefill = (p) => {
+    if (p.amount > 0) { amountInput.value = String(p.amount); fitAmount(); }
+    // Слипы, QR и тайские счета — в батах; бюджет в другой валюте — сумму надо пересчитать вручную
+    if (p.amount > 0 && p.thb && couple?.currency && couple.currency !== 'THB') {
+      setTimeout(() => showToast(t('capture.currencyNote', { cur: couple.currency })), 1200);
+    }
+    if (p.description) document.getElementById('exp-desc').value = p.description;
+    if (p.categoryId) {
+      const opt = backdrop.querySelector(`.cat-option[data-id="${p.categoryId}"]`);
+      if (opt) {
+        backdrop.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+      }
+    }
+    if (p.date && p.date <= todayStr()) {
+      dateInput.value = p.date;
+      dateInput.dispatchEvent(new Event('change'));
+    }
+    if (p.payer) {
+      const id = p.payer === 'me' ? profile.id : p.payer;
+      const opt = backdrop.querySelector(`.payer-option[data-id="${id}"]`);
+      if (opt) {
+        backdrop.querySelectorAll('.payer-option').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+      }
+    }
+    if (p.receiptBlob) { receiptBlob = p.receiptBlob; markReceipt(true); }
+  };
+  applyPrefill(prefill);
+
+  if (capture) {
+    document.getElementById('btn-voice').addEventListener('click', async () => {
+      hapticTap();
+      if (!(await showFeatureIntro('voice'))) return;
+      try {
+        const res = await listenForExpense();
+        if (res.denied) { showToast(t('capture.voiceDenied')); return; }
+        if (!res.text) return;
+        const parsed = parseVoiceExpense(res.text, { categories, labelOf: categoryLabel });
+        applyPrefill(parsed);
+        hapticSuccess();
+        if (!parsed.amount) { showToast(t('capture.saidNoAmount', { text: res.text })); amountInput.focus(); }
+      } catch (err) {
+        showToast(t('common.error', { msg: getReadableError(err) }));
+      }
+    });
+    document.getElementById('btn-scan-qr').addEventListener('click', async () => {
+      hapticTap();
+      if (!(await showFeatureIntro('qr'))) return;
+      try {
+        const res = await scanPaymentQr();
+        if (res.denied) { showToast(t('capture.cameraDenied')); return; }
+        if (!res.value) return;
+        const qr = parsePromptPayQr(res.value);
+        if (!qr) { showToast(t('capture.qrUnknown')); return; }
+        applyPrefill({
+          thb: qr.currency === 'THB',
+          amount: qr.amount,
+          description: qr.merchant || '',
+          categoryId: guessCategoryId(qr.merchant, categories, categoryLabel),
+        });
+        hapticSuccess();
+        showToast(t(qr.amount ? 'capture.qrFilled' : 'capture.qrNoAmount'));
+        if (!qr.amount) amountInput.focus();
+      } catch (err) {
+        showToast(t('common.error', { msg: getReadableError(err) }));
+      }
+    });
+    const scanInput = document.getElementById('scan-input');
+    document.getElementById('btn-scan-receipt').addEventListener('click', async () => {
+      hapticTap();
+      // Выбор файла открываем из нажатия «Понятно» — WebKit пускает его только по жесту пользователя
+      if (!(await showFeatureIntro('scan'))) return;
+      scanInput.click();
+    });
+    scanInput.addEventListener('change', async () => {
+      const file = scanInput.files?.[0];
+      scanInput.value = '';
+      if (!file) return;
+      const btn = document.getElementById('btn-scan-receipt');
+      btn.classList.add('busy');
+      try {
+        const slip = await recognizeFile(file);
+        applyPrefill({
+          thb: slip.kind === 'slip' || /฿|THB|baht|บาท/i.test(slip.text || ''),
+          amount: slip.amount,
+          description: slipDescription(slip, t('capture.transfer')),
+          categoryId: slipCategoryId(slip, categories, categoryLabel),
+          date: slip.date,
+          receiptBlob: file,
+        });
+        hapticSuccess();
+        showToast(t(slip.amount ? 'capture.scanFilled' : 'capture.scanNoAmount'));
+      } catch (err) {
+        showToast(t('common.error', { msg: getReadableError(err) }));
+      } finally {
+        btn.classList.remove('busy');
+      }
+    });
+  }
+
+  setTimeout(() => { if (!prefill.amount) document.getElementById('exp-amount')?.focus(); }, 300);
   const reopenAfterCategoryChange = async (action) => {
+    // Введённое (в том числе из слипа или голоса) не теряем: форма откроется заново с теми же данными
+    const keep = {
+      amount: parseFloat(amountInput.value) || null,
+      description: document.getElementById('exp-desc').value.trim(),
+      date: dateInput.value,
+      payer: backdrop.querySelector('.payer-option.selected')?.dataset.id || null,
+      receiptBlob: receiptInput.files?.[0] || receiptBlob,
+    };
     backdrop.remove();
     await loadAll();
     showToast(t(action === 'deleted' ? 'home.categoryDeleted'
       : action === 'updated' ? 'home.categoryUpdated' : 'home.categoryAdded'));
-    showAddExpenseModal();
+    showAddExpenseModal(keep);
   };
 
   backdrop.querySelector('#btn-add-category')?.addEventListener('click', () => {
@@ -235,8 +365,8 @@ async function showAddExpenseModal() {
   document.getElementById('btn-attach-receipt').addEventListener('click', () => receiptInput.click());
   receiptInput.addEventListener('change', () => {
     const f = receiptInput.files?.[0];
-    document.getElementById('receipt-name').textContent = f ? t('home.receiptShort') : t('home.receipt');
-    document.getElementById('btn-attach-receipt').classList.toggle('on', !!f);
+    if (f) receiptBlob = null;
+    markReceipt(!!f || !!receiptBlob);
   });
 
   const goalSelect = document.getElementById('exp-goal');
@@ -276,7 +406,7 @@ async function showAddExpenseModal() {
 
     // Чек грузим до создания расхода; его отсутствие — не повод терять запись
     let receiptPath = null;
-    const receiptFile = receiptInput.files?.[0];
+    const receiptFile = receiptInput.files?.[0] || receiptBlob;
     if (receiptFile) {
       try {
         receiptPath = await uploadReceipt(receiptFile, couple.id);
@@ -697,6 +827,7 @@ function renderHome(app) {
           </div>
         </div>
       </div>
+      ${slipImportBannerHtml()}
       <div class="hero">
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
@@ -861,7 +992,16 @@ function renderHome(app) {
       renderHome(app);
     }, 250);
   });
-  document.getElementById('btn-empty-add-expense')?.addEventListener('click', showAddExpenseModal);
+  document.getElementById('btn-empty-add-expense')?.addEventListener('click', () => showAddExpenseModal());
+  document.getElementById('btn-slip-enable')?.addEventListener('click', async () => {
+    document.getElementById('slip-banner')?.remove();
+    await enableSlipImport();
+  });
+  document.getElementById('btn-slip-later')?.addEventListener('click', () => {
+    writeSlipSettings({ enabled: false });
+    document.getElementById('slip-banner')?.remove();
+    showToast(t('capture.laterHint'));
+  });
   document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.onclick = () => {
       if (chip.dataset.disabled === 'true') {
@@ -1019,7 +1159,115 @@ function renderHome(app) {
   });
 }
 
+// ---- Оплаты из слипов и «Поделиться» ----
+
+let paymentCheckAt = 0;
+let paymentCheckRunning = false;
+let paymentRetryTimer = null;
+
+// Пока открыта форма или другой лист — найденное ждёт (оно сохранено), проверяем снова чуть позже
+function retryPaymentCheckLater() {
+  clearTimeout(paymentRetryTimer);
+  paymentRetryTimer = setTimeout(() => runPaymentCheck({ retry: true }), 4000);
+}
+
+async function refreshAfterCapture() {
+  try { await loadExpenses(); } catch { /* realtime догонит */ }
+  if (getCurrentPath() === '/') renderHome(document.getElementById('app'));
+}
+
+// Проверяем при открытии главной и при возврате в приложение (в том числе после «Поделиться»)
+export async function runPaymentCheck({ force = false, retry = false } = {}) {
+  if (!isCaptureAvailable() || paymentCheckRunning || !getState().couple) return;
+  if (document.querySelector('.modal-backdrop')) {
+    if (retry) retryPaymentCheckLater();
+    return;
+  }
+  // Входящие из «Поделиться» смотрим всегда (быстро), Фото — не чаще раза в 15 с
+  const scanPhotos = force || Date.now() - paymentCheckAt >= 15000;
+  paymentCheckRunning = true;
+  if (scanPhotos) paymentCheckAt = Date.now();
+  try {
+    const items = await collectPayments({ scanPhotos });
+    if (!items.length) {
+      if (force) showToast(t('capture.nothingFound'));
+      return;
+    }
+    // Пока искали, пользователь открыл форму — покажем найденное, когда закроет
+    if (document.querySelector('.modal-backdrop')) {
+      retryPaymentCheckLater();
+      return;
+    }
+    const { categories } = getState();
+    const lastPrefs = readLastExpensePrefs();
+    // Один присланный документ — сразу форма расхода с подставленными данными и чеком
+    if (items.length === 1 && items[0].source === 'inbox') {
+      const [it] = items;
+      // Слип уже добавляли (из Фото или раньше через «Поделиться») — форму всё равно открываем, но предупреждаем
+      const already = it.slip.key && readSlipSettings().seen.includes(it.slip.key);
+      if (already) showToast(t('capture.alreadyAdded'));
+      markSeen(seenKeys(it));
+      await clearInbox(items);
+      if (!it.slip.amount && !already) showToast(t('capture.scanNoAmount'));
+      showAddExpenseModal({
+        thb: it.slip.kind === 'slip' || /฿|THB|baht|บาท/i.test(it.slip.text || ''),
+        amount: it.slip.amount,
+        description: slipDescription(it.slip, t('capture.transfer')),
+        categoryId: slipCategoryId(it.slip, categories, categoryLabel),
+        date: it.slip.date,
+        receiptBlob: it.blob,
+      });
+      return;
+    }
+    openPaymentsReviewSheet(items, {
+      defaultPayerId: lastPrefs.payerId || 'shared',
+      defaultCategoryId: lastPrefs.categoryId,
+      onDone: (added) => { if (added) refreshAfterCapture(); },
+    });
+  } finally {
+    paymentCheckRunning = false;
+  }
+}
+
+export async function enableSlipImport() {
+  if (!(await showFeatureIntro('slips'))) return false;
+  // Заодно — второй способ, «Поделиться» (своей кнопки в приложении у него нет)
+  await showFeatureIntro('share');
+  const status = await photoAccess(true);
+  if (status !== 'granted' && status !== 'limited') {
+    writeSlipSettings({ enabled: false });
+    showToast(t('capture.photosDenied'));
+    return false;
+  }
+  // Смотрим последние 3 дня — свежие оплаты сразу окажутся в списке
+  writeSlipSettings({ enabled: true, since: Date.now() - 3 * 86400000 });
+  runPaymentCheck({ force: true });
+  return true;
+}
+
+// Подсказка в Таиланде (бат или тайский часовой пояс), пока пользователь не решил
+function slipImportBannerHtml() {
+  if (!isCaptureAvailable() || readSlipSettings().enabled !== null) return '';
+  const thai = getState().couple?.currency === 'THB' || Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Bangkok';
+  if (!thai) return '';
+  return `
+    <div class="capture-banner" id="slip-banner">
+      <div class="capture-banner-icon">${icon('scan-text', 20, '#fff', 2.2)}</div>
+      <div class="capture-banner-text">
+        <b>${t('capture.bannerTitle')}</b>
+        <span>${t('capture.bannerText')}</span>
+      </div>
+      <div class="capture-banner-actions">
+        <button class="btn btn-primary btn-small" id="btn-slip-enable">${t('capture.enable')}</button>
+        <button class="capture-banner-close" id="btn-slip-later" aria-label="${t('capture.later')}">${icon('x', 16)}</button>
+      </div>
+    </div>`;
+}
+
 export function registerHomeRoute() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') runPaymentCheck();
+  });
   // «+» в таб-баре шлёт событие — лист расхода открывается с любого экрана
   window.addEventListener('ce:add-expense', () => {
     if (!getState().couple || document.querySelector('.modal-backdrop')) return;
@@ -1034,6 +1282,7 @@ export function registerHomeRoute() {
     setState({ currentMonth: month });
     await loadAll();
     renderHome(app);
+    runPaymentCheck();
     if (realtimeChannel) realtimeChannel.unsubscribe();
     if (membersRefreshTimer) clearInterval(membersRefreshTimer);
     if (membersVisibilityHandler) {

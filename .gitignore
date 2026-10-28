@@ -6,3 +6,8 @@ dist
 .cursor
 
 .DS_Store
+
+# Настоящие слипы и счета с личными данными — только локально, для тестов разбора
+scripts/fixtures/slips/truemoney_promptpay.*
+scripts/fixtures/slips/krungthai_merchant.*
+scripts/fixtures/slips/invoice_rent.*
