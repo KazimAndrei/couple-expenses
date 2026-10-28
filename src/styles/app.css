@@ -767,7 +767,10 @@ body::before {
 @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
 /* Фон держит только html: собственный фон body рисуется поверх слоя z-index:-1 и прятал градиент */
 body { background: transparent; }
-.header, .filter-sticky {
+/* В покое шапка и чипы прозрачные — иначе стекло поверх градиента читалось как полоса.
+   Подложка появляется, только когда под ними реально уезжает контент. */
+.header, .filter-sticky { background: transparent; transition: background-color .2s; }
+body.scrolled .header, body.scrolled .filter-sticky {
   background: var(--c-bg-glass);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   backdrop-filter: blur(18px) saturate(1.4);

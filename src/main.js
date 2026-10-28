@@ -21,6 +21,12 @@ import { registerGoalsRoute } from './pages/goals-page.js';
 import { registerProfileRoute } from './pages/profile-page.js';
 import { registerPaywallRoute } from './pages/paywall-page.js';
 
+// Класс scrolled включает стеклянную подложку у шапки и липких чипов (см. app.css)
+const syncScrolled = () => document.body.classList.toggle('scrolled', window.scrollY > 4);
+window.addEventListener('scroll', syncScrolled, { passive: true });
+window.addEventListener('hashchange', () => requestAnimationFrame(syncScrolled));
+
+
 registerAuthSetupRoutes();
 registerHomeRoute();
 registerAnalyticsRoute();
