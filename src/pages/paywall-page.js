@@ -11,13 +11,15 @@ const SITE = 'https://coupleexpenses.com';
 // Фолбэк-цены: показываются в вебе и если стор недоступен. В нативе цены приходят из App Store.
 const FALLBACK = {
   yearly: { price: '$29.99', perMonth: '$2.50' },
-  monthly: { price: '$4.99', perMonth: null },
+  monthly: { price: '$39.99', perMonth: null },
 };
+// Годовой тариф снят с продажи — на пейволле только месяц. Вернуть год: добавить 'yearly' сюда.
+const PLANS = ['monthly'];
 
 const FEATURES = ['paywall.f1', 'paywall.f2', 'paywall.f3', 'paywall.f4', 'paywall.f5'];
 
 export function renderPaywall(app, { onSuccess, onClose } = {}) {
-  let selected = 'yearly';
+  let selected = PLANS[0];
   let packages = null;
   let busy = false;
   // Экран закрыт: после этого ни один отложенный ответ (цены, покупка) не имеет права
@@ -59,7 +61,7 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
         </div>
 
         <div class="paywall-plans">
-          ${['yearly', 'monthly'].map((key) => `
+          ${PLANS.map((key) => `
             <button class="paywall-plan ${selected === key ? 'selected' : ''}" data-plan="${key}">
               ${key === 'yearly' ? `<span class="paywall-badge">${t('paywall.save')}</span>` : ''}
               <div class="paywall-plan-name">${t(`paywall.${key}`)}</div>
