@@ -17,6 +17,7 @@ import { openPaymentsReviewSheet } from '../components/payments-review-sheet.js'
 import { showFeatureIntro } from '../components/feature-intro.js';
 import { guessCategoryId, parsePromptPayQr, slipCategoryId, slipDescription } from '../lib/slips.js';
 import { parseVoiceExpense } from '../lib/voice.js';
+import { moneyFlow } from '../lib/money-flow.js';
 import {
   MISSING_PARTNER_ID,
   expenseJoinedProfileName,
@@ -801,8 +802,10 @@ function renderHome(app) {
   }
   const splitSum = splitTotals.a + splitTotals.b + splitTotals.shared;
   const income = getIncomeFromState();
-  const incomeLeft = income - totalAll;
-  const incomePct = income > 0 ? Math.min(100, Math.round((totalAll / income) * 100)) : 0;
+  // Тот же расчёт, что в аналитике и виджетах: отложенное в цели тоже вычитается
+  const flow = moneyFlow(income, expenses);
+  const incomeLeft = flow.left;
+  const incomePct = flow.usedPct;
   const [mY, mM] = month.split('-').map(Number);
   const nowDate = new Date();
   const isThisMonth = nowDate.getFullYear() === mY && nowDate.getMonth() + 1 === mM;

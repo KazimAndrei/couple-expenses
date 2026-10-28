@@ -3,6 +3,7 @@ import { getState, isSolo, setState } from '../lib/store.js';
 import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
 import { PARTNER_COLORS, catTile, currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, moneyHtml, pct, prevMonth, safeColor } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
+import { moneyFlow } from '../lib/money-flow.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
@@ -94,11 +95,13 @@ export function registerAnalyticsRoute() {
   const spendable = expenses.filter((x) => !isGoalExpense(x));
   // Доход и накопления — общие для пары, поэтому считаются по всем записям, без чипа участника
   const incomeTotal = incomeEntries.reduce((sum, ent) => sum + parseFloat(ent.amount || 0), 0);
-  const savedTotal = expenses.filter(isGoalExpense).reduce((sum, x) => sum + parseFloat(x.amount || 0), 0);
-  const coupleSpent = spendable.reduce((sum, x) => sum + parseFloat(x.amount || 0), 0);
-  const leftover = incomeTotal - coupleSpent - savedTotal;
-  const spentPct = incomeTotal > 0 ? Math.min(100, Math.round((coupleSpent / incomeTotal) * 100)) : 0;
-  const savedPct = incomeTotal > 0 ? Math.min(100 - spentPct, Math.round((savedTotal / incomeTotal) * 100)) : 0;
+  // Единый расчёт с главной и виджетами (lib/money-flow.js)
+  const flow = moneyFlow(incomeTotal, expenses);
+  const savedTotal = flow.saved;
+  const coupleSpent = flow.spent;
+  const leftover = flow.left;
+  const spentPct = flow.spentPct;
+  const savedPct = flow.savedPct;
   const filteredExpenses = filterExpensesByMemberChip(spendable, filterBy, sides);
 
     const grandTotal = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);

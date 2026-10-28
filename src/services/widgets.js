@@ -6,6 +6,7 @@ import { Capture } from './capture.js';
 import { getState, isSolo } from '../lib/store.js';
 import { categoryLabel, getLang, monthName, t } from '../lib/i18n.js';
 import { currentMonth, formatMoney, todayStr } from '../lib/utils.js';
+import { moneyFlow as calcFlow } from '../lib/money-flow.js';
 import { memberDisplayLabel, resolveMemberSides, resolvePayerSide, expenseJoinedProfileName } from '../lib/member-filters.js';
 
 let lastJson = '';
@@ -60,6 +61,8 @@ export function buildWidgetSnapshot(state = getState(), now = new Date()) {
   const last = [...spend].sort((a, b) => stamp(b).localeCompare(stamp(a)))[0];
   const lastTitle = last ? (last.description || categoryLabel(last.categories?.name || '')) : '';
   const income = num(monthlyIncome);
+  // Остаток — как на главной и в аналитике: доход − траты − отложенное в цели
+  const mf = calcFlow(income, expenses);
   const solo = isSolo(state);
 
   return {
@@ -78,9 +81,9 @@ export function buildWidgetSnapshot(state = getState(), now = new Date()) {
     perDay: money(total / Math.max(1, day)),
     forecast: money((total / Math.max(1, day)) * daysInMonth),
     income: income > 0 ? money(income) : null,
-    left: income > 0 ? money(income - total) : null,
-    usedShare: income > 0 ? Math.min(1, Math.max(0, total / income)) : null,
-    over: income > 0 && total > income,
+    left: income > 0 ? money(mf.left) : null,
+    usedShare: income > 0 ? mf.usedPct / 100 : null,
+    over: income > 0 && mf.left < 0,
     solo,
     split: solo ? null : {
       a: { name: memberDisplayLabel(sides.memberA) || 'A', amount: money(split.a), share: total > 0 ? Math.max(0, split.a / total) : 0 },
@@ -104,9 +107,9 @@ export function buildWidgetSnapshot(state = getState(), now = new Date()) {
       meta: `${t('home.txCount', { count: spend.length })}${total > 0 ? ` · ${t('home.perDay', { amount: money(total / Math.max(1, day)) })}` : ''}`,
       // «Осталось <b>…</b> из …»: жирную часть виджет выделит сам
       income: income > 0
-        ? (income - total >= 0
-          ? t('home.leftOfIncome', { left: money(income - total), income: money(income) })
-          : t('home.overIncome', { amount: money(total - income) }))
+        ? (mf.left >= 0
+          ? t('home.leftOfIncome', { left: money(mf.left), income: money(income) })
+          : t('home.overIncome', { amount: money(-mf.left) }))
         : null,
     },
     l: {
@@ -138,11 +141,7 @@ function moneyFlow(state, spend, expenses, money) {
   const entries = state.incomeEntries || [];
   const income = entries.length ? entries.reduce((s, e) => s + num(e.amount), 0) : num(state.monthlyIncome);
   if (!(income > 0)) return null;
-  const spent = spend.reduce((s, x) => s + num(x.amount), 0);
-  const saved = expenses.filter(isGoalExpense).reduce((s, x) => s + num(x.amount), 0);
-  const leftover = income - spent - saved;
-  const spentPct = Math.max(0, Math.min(100, Math.round((spent / income) * 100)));
-  const savedPct = Math.max(0, Math.min(100 - spentPct, Math.round((saved / income) * 100)));
+  const { spent, saved, left: leftover, spentPct, savedPct } = calcFlow(income, expenses);
   return {
     incomeLabel: t('analytics.income'),
     income: money(income),
