@@ -1,5 +1,5 @@
 import { route, navigate } from '../lib/router.js';
-import { getState, setState } from '../lib/store.js';
+import { getState, isSolo, setState } from '../lib/store.js';
 import { deleteBudget, deleteIncomeEntry, getBudgets, getCoupleMembers, getExpenses, getIncomeEntries, upsertBudget } from '../lib/supabase.js';
 import { PARTNER_COLORS, catTile, currentMonth, escapeHtml, formatDateTime, formatMoney, formatMonth, icon, moneyHtml, pct, prevMonth, safeColor } from '../lib/utils.js';
 import { t, categoryLabel } from '../lib/i18n.js';
@@ -182,12 +182,12 @@ export function registerAnalyticsRoute() {
     app.innerHTML = `
       <div class="page-enter">
         <div class="header"><div><div class="header-title">${t('analytics.title')}</div><div class="header-sub">${formatMonth(month)}</div></div></div>
-        <div class="filter-sticky">
+        ${isSolo() ? '' : `<div class="filter-sticky">
           <div class="filter-bar" style="padding: 8px 16px 12px;">
             <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
             ${memberChips.join('\n            ')}
           </div>
-        </div>
+        </div>`}
         ${!filterBy ? `
         <div class="money-flow">
           <div class="money-flow-head">

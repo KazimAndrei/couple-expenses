@@ -1,5 +1,6 @@
 import { route, navigate } from '../lib/router.js';
-import { getState, setState } from '../lib/store.js';
+import { getState, isSolo, setState } from '../lib/store.js';
+import { inviteHowtoHtml } from '../components/invite-howto.js';
 import { fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase, uploadAvatar } from '../lib/supabase.js';
 import { reencodeImage } from '../lib/image.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
@@ -146,6 +147,7 @@ export function registerProfileRoute() {
     if (!state.profile) { navigate('/auth'); return; }
     const me = state.profile;
     const partner = (state.members || []).find((m) => m.id !== me.id) || null;
+    const solo = isSolo(state);
     const sides = resolveMemberSides(state.members || []);
     const mySide = sides.memberB?.id === me.id ? 'b' : '';
     const partnerSide = mySide ? '' : 'b';
@@ -177,17 +179,17 @@ export function registerProfileRoute() {
                 <button class="profile-avatar-edit" id="btn-change-avatar" aria-label="${t('profile.changePhotoAria')}">${icon('camera', 13, 'currentColor', 2.4)}</button>
                 <input type="file" id="avatar-input" accept="image/*" style="display:none;">
               </div>
-              ${state.couple ? `<div class="couple-heart">${icon('heart', 15, '#e8735a', 2.6)}</div>${partnerAvatar}` : ''}
+              ${state.couple && !solo ? `<div class="couple-heart">${icon('heart', 15, '#e8735a', 2.6)}</div>${partnerAvatar}` : ''}
             </div>
             <div class="couple-names">${e(me.display_name || '')}${partner ? ` &amp; ${e(memberDisplayLabel(partner))}` : ''}</div>
-            ${state.couple ? `<div class="couple-sub">${partner ? e(state.couple.name || '') : t('profile.waitingPartner')}</div>` : ''}
-            ${state.couple && !partner ? `<button class="btn btn-primary btn-small" id="btn-invite-hero">${t('profile.inviteShort')}</button>` : ''}
+            ${state.couple ? `<div class="couple-sub">${partner ? e(state.couple.name || '') : t(solo ? 'profile.soloSub' : 'profile.waitingPartner')}</div>` : ''}
+            ${state.couple && !partner ? `<button class="btn ${solo ? 'btn-secondary' : 'btn-primary'} btn-small" id="btn-invite-hero">${t(solo ? 'profile.addPartner' : 'profile.inviteShort')}</button>` : ''}
           </div>
 
           ${state.couple ? `
           <div class="settings-group-title">${t('profile.sectionCouple')}</div>
           <div class="settings-group">
-            ${row('btn-invite', 'share', '#e8735a', t('profile.inviteShort'))}
+            ${row('btn-invite', 'share', '#e8735a', t(solo ? 'profile.addPartner' : 'profile.inviteShort'))}
             ${row('btn-copy-code', 'link', '#7f77dd', t('profile.inviteCode'), e(state.couple.invite_code))}
             ${row('btn-settings', 'users', '#378add', t('profile.coupleSettings'))}
             ${row('btn-currency', 'coins', '#ef9f27', t('profile.currency'), `${e(CURRENCIES[state.couple.currency]?.[0] || '')} ${e(state.couple.currency)}`, 'currency-current')}
@@ -296,7 +298,9 @@ export function registerProfileRoute() {
     document.getElementById('btn-remove-avatar')?.addEventListener('click', async () => {
       await removeAvatar(state.profile.id);
     });
-    document.getElementById('btn-invite')?.addEventListener('click', async () => {
+    document.getElementById('btn-invite')?.addEventListener('click', () => openInviteSheet(state));
+    // Отдельно от листа: сам шаринг ссылки
+    const shareInvite = async () => {
       const link = inviteLink(state.couple.invite_code);
       if (navigator.share) {
         try { await navigator.share({ title: 'CoupleExpenses', text: t('invite.shareText'), url: link }); } catch { /* отменили шаринг */ }
@@ -305,7 +309,29 @@ export function registerProfileRoute() {
           .then(() => showToast(t('common.linkCopied')))
           .catch(() => showToast(state.couple.invite_code));
       }
-    });
+    };
+    // Лист с анимированной инструкцией: из «сам по себе» он же переводит в режим пары
+    const openInviteSheet = () => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.onclick = (ev) => { if (ev.target === backdrop) backdrop.remove(); };
+      backdrop.innerHTML = `
+        <div class="modal-sheet">
+          <div class="modal-handle"></div>
+          ${inviteHowtoHtml()}
+          <div class="invite-code" style="display:block; margin:12px 0 0; text-align:center;">${e(state.couple.invite_code)}</div>
+          <button class="btn btn-primary" id="btn-invite-share" style="margin-top:12px;">${t('setup.share')}</button>
+        </div>`;
+      document.body.appendChild(backdrop);
+      enableModalSwipe(backdrop);
+      backdrop.querySelector('#btn-invite-share').onclick = async () => {
+        if (state.couple.solo) {
+          const { error } = await supabase.from('couples').update({ solo: false }).eq('id', state.couple.id);
+          if (!error) setState({ couple: { ...state.couple, solo: false } });
+        }
+        await shareInvite();
+      };
+    };
     document.getElementById('btn-copy-code')?.addEventListener('click', () => {
       navigator.clipboard.writeText(state.couple.invite_code)
         .then(() => showToast(t('profile.codeCopied')))

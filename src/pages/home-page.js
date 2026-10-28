@@ -1,5 +1,5 @@
 import { route, navigate, getCurrentPath, pinStickyUnderHeader } from '../lib/router.js';
-import { getState, setState } from '../lib/store.js';
+import { getState, isSolo, setState } from '../lib/store.js';
 import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, catTile, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
@@ -122,7 +122,7 @@ async function showAddExpenseModal() {
         </select>
       </div>
       ` : ''}
-      <div class="form-group">
+      ${isSolo() ? '' : `<div class="form-group">
         <label class="form-label">${t('home.whoPays')}</label>
         <div class="payer-options">
           <div class="payer-option ${!defaultPayerId || defaultPayerId === 'shared' ? 'selected' : ''}" data-id="shared">
@@ -139,7 +139,7 @@ async function showAddExpenseModal() {
           </div>`;
           }).join('')}
         </div>
-      </div>
+      </div>`}
       <div class="form-group meta-chips">
         <label class="meta-chip" id="date-chip">
           ${icon('calendar', 16)}<span id="date-chip-label">${e(formatDate(defaultDate))}</span>
@@ -504,7 +504,7 @@ function showExpenseActionsModal(expense, app) {
         <div class="form-group"><label class="form-label">${t('common.category')}</label>
           <select class="form-input" id="edit-category">${categories.map(c => `<option value="${c.id}" ${expense.category_id === c.id ? 'selected' : ''}>${e(categoryLabel(c.name))}</option>`).join('')}</select>
         </div>
-        <div class="form-group"><label class="form-label">${t('home.whoPays')}</label>
+        <div class="form-group"${isSolo() ? ' hidden' : ''}><label class="form-label">${t('home.whoPays')}</label>
           <select class="form-input" id="edit-paid-by">
             <option value="shared" ${expense.split === 'equal' ? 'selected' : ''}>${t('common.shared')}</option>
             ${(() => {
@@ -672,9 +672,11 @@ function renderHome(app) {
   const isThisMonth = nowDate.getFullYear() === mY && nowDate.getMonth() + 1 === mM;
   const daysElapsed = isThisMonth ? nowDate.getDate() : new Date(mY, mM, 0).getDate();
   const hasAdvancedFilters = !!(getState().categoryFilter || getState().amountMin || getState().amountMax || getState().dateFrom || getState().dateTo);
-  const heroLabel = filterBy ? t('home.expensesOf', { name: selectedMemberLabel }) : t('home.spentTogether');
+  const solo = isSolo();
+  const heroLabel = filterBy ? t('home.expensesOf', { name: selectedMemberLabel }) : t(solo ? 'home.spentSolo' : 'home.spentTogether');
 
   const payerBadge = (exp) => {
+    if (solo) return '';
     if (exp.split === 'equal') return `<span class="payer-badge shared">${icon('heart', 9, '#fff', 3)}</span>`;
     const side = resolvePayerSide(exp.paid_by, sides, expenseJoinedProfileName(exp));
     const member = side === 'b' ? memberB : memberA;
@@ -699,7 +701,7 @@ function renderHome(app) {
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
         <div class="hero-meta">${t('home.txCount', { count: spendable.length })}${total > 0 ? ` · ${t('home.perDay', { amount: formatMoney(total / Math.max(1, daysElapsed), couple?.currency) })}` : ''}</div>
-        ${!filterBy && splitSum > 0 ? `
+        ${!solo && !filterBy && splitSum > 0 ? `
         <div class="hero-split">
           <div class="split-bar">
             ${splitTotals.a > 0 ? `<i class="a" style="flex-grow:${splitTotals.a}"></i>` : ''}
@@ -731,12 +733,12 @@ function renderHome(app) {
         </label>
         <button class="icon-btn" id="btn-open-filters" aria-label="${t('home.filters')}">${icon('sliders', 18)}${hasAdvancedFilters ? '<i class="dot"></i>' : ''}</button>
       </div>
-      <div class="filter-sticky">
+      ${solo ? '' : `<div class="filter-sticky">
         <div class="filter-bar">
           <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
           ${memberChips.join('\n          ')}
         </div>
-      </div>
+      </div>`}
       <div class="tx-section">
         ${grouped.length === 0 ? `
           <div class="empty-state">
@@ -761,7 +763,7 @@ function renderHome(app) {
                     ${catTile('target', '#1d9e75', 42).slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                     <div class="tx-info">
                       <div class="tx-name">${t('home.savedToGoal', { name: e(goalName) })}</div>
-                      <div class="tx-cat">${t('home.savingLabel')} · ${e(payerName)}</div>
+                      <div class="tx-cat">${t('home.savingLabel')}${solo ? '' : ` · ${e(payerName)}`}</div>
                     </div>
                     <div class="tx-amount saving">+${moneyHtml(exp.amount, exp.currency)}</div>
                   </div>
@@ -776,7 +778,7 @@ function renderHome(app) {
                   ${tile.slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                   <div class="tx-info">
                     <div class="tx-name">${e(exp.description)}</div>
-                    <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))} · ${e(payerName)}</div>
+                    <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))}${solo ? '' : ` · ${e(payerName)}`}</div>
                   </div>
                   <div class="tx-amount">${moneyHtml(exp.amount, exp.currency)}</div>
                 </div>

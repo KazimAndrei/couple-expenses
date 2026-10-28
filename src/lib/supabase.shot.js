@@ -69,7 +69,7 @@ const MEMBERS = [
   { id: SAM, display_name: 'Sam', avatar_url: null, created_at: '2026-01-02T10:05:00Z' },
 ];
 
-const COUPLE_ROW = { id: COUPLE, name: 'Alex & Sam', currency: 'USD', owner_id: ALEX, invite_code: 'LOVE24' };
+const COUPLE_ROW = { id: COUPLE, name: 'Alex & Sam', currency: 'USD', owner_id: ALEX, invite_code: 'LOVE24', solo: localStorage.getItem('shot_solo') === '1' };
 const PROFILE = { id: ALEX, display_name: 'Alex', couple_id: COUPLE, avatar_url: null, couples: COUPLE_ROW };
 const USER = { id: ALEX, email: 'alex@example.com' };
 const SESSION = { user: USER, access_token: 'shot', refresh_token: 'shot' };
@@ -106,7 +106,7 @@ export async function signOut() {}
 export async function getSession() { return SESSION; }
 export async function ensureAuthenticated() { return { session: SESSION, profile: PROFILE }; }
 export async function getProfile() { return PROFILE; }
-export async function getCoupleMembers() { return MEMBERS; }
+export async function getCoupleMembers() { return COUPLE_ROW.solo ? MEMBERS.slice(0, 1) : MEMBERS; }
 export async function createCouple() { return COUPLE_ROW; }
 export async function joinCouple() { return COUPLE_ROW; }
 export async function updateDisplayName() {}

@@ -775,3 +775,43 @@ body.scrolled .header, body.scrolled .filter-sticky {
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   backdrop-filter: blur(18px) saturate(1.4);
 }
+
+/* === Инструкция «как добавить партнёра» (анимация по кругу, 3 сцены × 3с) === */
+.howto { margin:18px 0 6px; padding:16px; border-radius:20px; background:var(--c-surface); border:1px solid var(--c-border); text-align:left; }
+.howto-title { font-size:15px; font-weight:700; margin-bottom:12px; text-align:center; }
+.howto-stage { position:relative; height:150px; border-radius:16px; overflow:hidden; background:linear-gradient(160deg,#0f3d33,#16594a 60%,#1d9e75); }
+.howto-scene { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; opacity:0; animation:howtoScene 9s infinite; }
+.howto-scene.s2 { animation-delay:3s; } .howto-scene.s3 { animation-delay:6s; }
+.howto-scene.s2 * { animation-delay:3s !important; } .howto-scene.s3 * { animation-delay:6s !important; }
+.howto-scene.s3 .howto-code b { animation-delay:calc(6s + var(--i) * 0.12s) !important; }
+@keyframes howtoScene { 0%{opacity:0; transform:scale(.96)} 3%,30%{opacity:1; transform:none} 33.3%,100%{opacity:0} }
+.howto-phone { position:relative; width:150px; height:132px; margin-top:34px; border-radius:20px 20px 0 0; background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.35); border-bottom:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+.howto-share { width:44px; height:44px; border-radius:14px; background:#e8735a; display:flex; align-items:center; justify-content:center; animation:howtoPress 9s infinite; }
+.howto-bubble { position:absolute; top:-30px; left:50%; display:flex; align-items:center; gap:5px; padding:6px 10px; border-radius:12px 12px 12px 3px; background:#1d9e75; color:#fff; font-size:11px; font-weight:600; white-space:nowrap; opacity:0; transform:translate(-50%,20px); animation:howtoFly 9s infinite; }
+.howto-tap { position:absolute; width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.75); box-shadow:0 0 0 6px rgba(255,255,255,.25); top:62%; left:58%; opacity:0; animation:howtoTap 9s infinite; }
+.howto-appicon { width:46px; height:46px; border-radius:13px; background:linear-gradient(135deg,#1d9e75,#e8735a); display:flex; align-items:center; justify-content:center; animation:howtoPop 9s infinite; }
+.howto-apple { display:flex; align-items:center; gap:5px; padding:6px 10px; white-space:nowrap; border-radius:9px; background:#000; color:#fff; font-size:11px; font-weight:600; animation:howtoPress 9s infinite; }
+.howto-apple-logo { width:9px; height:11px; border-radius:50% 50% 45% 45%; background:#fff; }
+.howto-code { display:flex; gap:4px; }
+.howto-code b { width:14px; height:20px; border-radius:5px; background:rgba(255,255,255,.9); color:#0f3d33; font-size:11px; display:flex; align-items:center; justify-content:center; opacity:0; animation:howtoType 9s infinite; animation-delay:calc(var(--i) * 0.12s); }
+.howto-pair { display:flex; align-items:center; gap:2px; opacity:0; animation:howtoPair 9s infinite; }
+.howto-pair i { width:30px; height:30px; border-radius:50%; border:2px solid #fff; }
+.howto-pair i.a { background:#1d9e75; animation:howtoSlideA 9s infinite; } .howto-pair i.b { background:#e8735a; animation:howtoSlideB 9s infinite; }
+@keyframes howtoTap { 0%,8%{opacity:0; transform:scale(1.6)} 11%{opacity:1; transform:scale(1)} 15%,100%{opacity:0; transform:scale(.8)} }
+@keyframes howtoPress { 0%,10%{transform:none} 12%{transform:scale(.88)} 15%,100%{transform:none} }
+@keyframes howtoFly { 0%,13%{opacity:0; transform:translate(-50%,20px)} 18%,30%{opacity:1; transform:translate(-50%,0)} 33%,100%{opacity:0} }
+@keyframes howtoPop { 0%{transform:scale(.4)} 6%{transform:scale(1.08)} 9%,100%{transform:none} }
+@keyframes howtoType { 0%,4%{opacity:0; transform:translateY(4px)} 7%,31%{opacity:1; transform:none} 33%,100%{opacity:0} }
+@keyframes howtoPair { 0%,15%{opacity:0} 18%,31%{opacity:1} 33%,100%{opacity:0} }
+@keyframes howtoSlideA { 0%,16%{transform:translateX(-14px)} 22%,100%{transform:none} }
+@keyframes howtoSlideB { 0%,16%{transform:translateX(14px)} 22%,100%{transform:none} }
+.howto-steps { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+.howto-step { display:flex; align-items:center; gap:10px; font-size:13px; line-height:1.3; color:var(--c-text-secondary); padding:6px 8px; border-radius:10px; animation:howtoStep 9s infinite; }
+.howto-step.st2 { animation-delay:3s; } .howto-step.st3 { animation-delay:6s; }
+.howto-num { flex:none; width:22px; height:22px; border-radius:50%; background:var(--c-border); color:var(--c-text); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+@keyframes howtoStep { 0%,32%{background:var(--c-accent-light); color:var(--c-text)} 34%,100%{background:transparent} }
+@media (prefers-reduced-motion: reduce) {
+  .howto-scene, .howto-scene *, .howto-step { animation:none !important; }
+  .howto-scene.s3 { opacity:1; } .howto-scene.s3 .howto-code b, .howto-scene.s3 .howto-pair { opacity:1; }
+}
+.setup-card.solo { border-style:dashed; }

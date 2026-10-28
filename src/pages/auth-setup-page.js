@@ -1,6 +1,6 @@
 import { route, navigate, getQueryParam } from '../lib/router.js';
 import { setState } from '../lib/store.js';
-import { APP_STORE_URL, createCouple, getProfile, getSession, joinCouple, signInWithApple, signOut, updateDisplayName, inviteLink } from '../lib/supabase.js';
+import { APP_STORE_URL, createCouple, getProfile, getSession, joinCouple, signInWithApple, signOut, supabase, updateDisplayName, inviteLink } from '../lib/supabase.js';
 import { CURRENCIES, currencyName, currentMonth, escapeHtml, icon } from '../lib/utils.js';
 import { t, getLang, setLang, LANG_LABELS } from '../lib/i18n.js';
 import { showToast } from '../services/toast.js';
@@ -11,6 +11,7 @@ import { renderPaywall } from './paywall-page.js';
 import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
 import { clearSessionState } from '../services/session-cleanup.js';
 import { Capacitor } from '@capacitor/core';
+import { inviteHowtoHtml } from '../components/invite-howto.js';
 
 const e = escapeHtml;
 const PENDING_INVITE_KEY = 'ce_pending_invite';
@@ -175,6 +176,7 @@ export function registerAuthSetupRoutes() {
           ${pendingCode ? '' : `<div class="setup-card" id="btn-create"><h3>${t('setup.createTitle')}</h3><p>${t('setup.createText')}</p></div>`}
           <div class="setup-card" id="btn-join"><h3>${t('setup.joinTitle')}</h3><p>${pendingCode ? t('setup.joinInvitedText') : t('setup.joinText')}</p></div>
           ${pendingCode ? `<div class="setup-card" id="btn-create"><h3>${t('setup.createOwnTitle')}</h3><p>${t('setup.createOwnText')}</p></div>` : ''}
+          <div class="setup-card solo" id="btn-solo"><h3>${t('setup.soloTitle')}</h3><p>${t('setup.soloText')}</p></div>
         </div>
         <div id="setup-form" style="max-width: 320px; margin: 24px auto 0; display: none;"></div>
         <div class="setup-account-actions">
@@ -202,8 +204,8 @@ export function registerAuthSetupRoutes() {
     };
 
     // Создание пары после того, как доступ подтверждён (оплатой или уже активной подпиской)
-    const doCreateCouple = async (name) => {
-      const btnCreate = document.getElementById('btn-create');
+    const doCreateCouple = async (name, solo = false) => {
+      const btnCreate = document.getElementById(solo ? 'btn-solo' : 'btn-create');
       if (btnCreate) {
         if (btnCreate.dataset.busy === '1') return;
         btnCreate.dataset.busy = '1';
@@ -214,6 +216,13 @@ export function registerAuthSetupRoutes() {
         const couple = await createCouple();
         localStorage.removeItem(PENDING_INVITE_KEY);
         sessionStorage.removeItem('ce_setup_name');
+        if (solo) {
+          // Пара уже создана — если флаг не сохранился, человек просто увидит обычный режим
+          const { error } = await supabase.from('couples').update({ solo: true }).eq('id', couple.id);
+          if (!error) couple.solo = true;
+          await enterApp(couple);
+          return;
+        }
         const link = inviteLink(couple.invite_code);
         // Выбор уже сделан — карточки «создать / присоединиться» и поле имени убираем,
         // иначе экран выглядит так, будто пару предлагают создать второй раз
@@ -232,7 +241,8 @@ export function registerAuthSetupRoutes() {
         if (subtitle) subtitle.textContent = t('setup.createdSubtitle');
         form.style.display = 'block';
         form.innerHTML = `
-          <p style="font-size: 14px; color: var(--c-text-secondary); margin-bottom: 8px;">${t('setup.sendPartnerLink')}</p>
+          ${inviteHowtoHtml()}
+          <p style="font-size: 14px; color: var(--c-text-secondary); margin: 14px 0 8px;">${t('setup.sendPartnerLink')}</p>
           <div class="invite-code" style="font-size:13px; word-break:break-all;">${e(link)}</div>
           <button class="btn btn-secondary btn-small" id="btn-share-invite">${t('setup.share')}</button>
           <button class="btn btn-primary" style="margin-top: 16px;" id="btn-start">${t('setup.start')}</button>
@@ -260,14 +270,14 @@ export function registerAuthSetupRoutes() {
     // Пейволл открываем синхронно: любой await до отрисовки может подвесить кнопку.
     const PAID_KEY = 'ce_paywall_skip';
     let creating = false; // guard живёт в замыкании: DOM-кнопки может не быть (поверх открыт пейволл)
-    document.getElementById('btn-create').onclick = async () => {
+    const startCreate = (solo) => async () => {
       if (creating) return;
       const name = readName();
       if (!name) { showToast(t('common.enterName')); return; }
 
       if (!purchasesAvailable() || sessionStorage.getItem(PAID_KEY) === '1') {
         creating = true;
-        try { await doCreateCouple(name); } finally { creating = false; }
+        try { await doCreateCouple(name, solo); } finally { creating = false; }
         return;
       }
 
@@ -276,7 +286,7 @@ export function registerAuthSetupRoutes() {
       if (alreadyPremium) {
         sessionStorage.setItem(PAID_KEY, '1');
         creating = true;
-        try { await doCreateCouple(name); } finally { creating = false; }
+        try { await doCreateCouple(name, solo); } finally { creating = false; }
         return;
       }
 
@@ -288,11 +298,13 @@ export function registerAuthSetupRoutes() {
           sessionStorage.setItem(PAID_KEY, '1');
           if (creating) return;
           creating = true;
-          try { await doCreateCouple(name); } finally { creating = false; }
+          try { await doCreateCouple(name, solo); } finally { creating = false; }
         },
         onClose: () => navigate('/setup'),
       });
     };
+    document.getElementById('btn-create').onclick = startCreate(false);
+    document.getElementById('btn-solo').onclick = startCreate(true);
 
     document.getElementById('btn-join').onclick = () => {
       const form = document.getElementById('setup-form');

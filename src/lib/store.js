@@ -30,3 +30,8 @@ export function subscribe(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+
+/** «Я сам по себе»: пара из одного человека. Как только партнёр присоединился — обычный режим. */
+export function isSolo(s = state) {
+  return !!s.couple?.solo && (s.members || []).length < 2;
+}
