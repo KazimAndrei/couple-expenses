@@ -187,7 +187,7 @@ export function registerProfileRoute() {
           </div>
 
           ${state.couple ? `
-          <div class="settings-group-title">${t('profile.sectionCouple')}</div>
+          <div class="settings-group-title">${t(solo ? 'profile.sectionBudget' : 'profile.sectionCouple')}</div>
           <div class="settings-group">
             ${row('btn-invite', 'share', '#e8735a', t(solo ? 'profile.addPartner' : 'profile.inviteShort'))}
             ${row('btn-copy-code', 'link', '#7f77dd', t('profile.inviteCode'), e(state.couple.invite_code))}

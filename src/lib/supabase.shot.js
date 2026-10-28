@@ -70,7 +70,8 @@ const MEMBERS = [
 ];
 
 const COUPLE_ROW = { id: COUPLE, name: 'Alex & Sam', currency: 'USD', owner_id: ALEX, invite_code: 'LOVE24', solo: localStorage.getItem('shot_solo') === '1' };
-const PROFILE = { id: ALEX, display_name: 'Alex', couple_id: COUPLE, avatar_url: null, couples: COUPLE_ROW };
+const NO_COUPLE = localStorage.getItem('shot_nocouple') === '1';
+const PROFILE = { id: ALEX, display_name: 'Alex', couple_id: NO_COUPLE ? null : COUPLE, avatar_url: null, couples: NO_COUPLE ? null : COUPLE_ROW };
 const USER = { id: ALEX, email: 'alex@example.com' };
 const SESSION = { user: USER, access_token: 'shot', refresh_token: 'shot' };
 
@@ -98,6 +99,18 @@ export const supabase = {
   },
   channel: () => ({ on() { return this; }, subscribe() { return this; } }),
   removeChannel: noop,
+  // Запись настроек пары (solo, валюта) — меняем фикстуру, чтобы флоу можно было прогнать целиком
+  from: (table) => ({
+    update: (patch) => ({
+      eq: async () => {
+        if (table === 'couples') {
+          Object.assign(COUPLE_ROW, patch);
+          localStorage.setItem('shot_solo', COUPLE_ROW.solo ? '1' : '0');
+        }
+        return { error: null };
+      },
+    }),
+  }),
 };
 
 export async function currentUser() { return USER; }
@@ -113,12 +126,14 @@ export async function updateDisplayName() {}
 export async function getExpenses() { return EXPENSES; }
 export async function addExpense(expense) {
   const cat = catById(expense.category_id) || CATS[0];
-  return {
+  const row = {
     ...expense, id: `new-${EXPENSES.length}`, currency: 'USD',
     categories: { name: cat.name, icon: cat.icon, color: cat.color },
     profiles: { display_name: expense.paid_by === ALEX ? 'Alex' : 'Sam' },
     goal_contributions: [],
   };
+  EXPENSES.unshift(row); // как в настоящей базе: следующая загрузка вернёт новую трату
+  return row;
 }
 export async function addExpenseToGoal() { return null; }
 export async function deleteExpense() {}
