@@ -355,6 +355,16 @@
   apply(TEXT[fromUrl] ? fromUrl : TEXT[saved] ? saved : guess);
   document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => apply(b.dataset.lang)));
 
+  // Куда ведёт кнопка: пока Apple не одобрила сборку с активацией веб-покупок — в App Store.
+  // ?checkout=sandbox — тестовая оплата RevenueCat (карты Stripe test mode), для проверки всей цепочки.
+  const CHECKOUT = {
+    appstore: 'https://apps.apple.com/app/id6799875708',
+    web: 'https://pay.rev.cat/hnofmvslooamixkc/',
+    sandbox: 'https://pay.rev.cat/sandbox/zqspmadndytvwqoy/',
+  };
+  const checkoutMode = new URLSearchParams(location.search).get('checkout') === 'sandbox' ? 'sandbox' : 'appstore';
+  document.getElementById('cta').href = CHECKOUT[checkoutMode];
+
   // Клик по кнопке — конверсия для оптимизации рекламы; переход чуть ждём, чтобы событие успело уйти
   document.getElementById('cta').addEventListener('click', (ev) => {
     if (!window.trackEvent) return;

@@ -2,7 +2,7 @@
 // а мы отправляем его в Meta с сервера. Токен — секрет Pages META_CAPI_TOKEN, в коде его нет.
 const PIXEL_ID = '2939131276448532';
 const GRAPH = 'https://graph.facebook.com/v24.0';
-const ALLOWED = new Set(['PageView', 'InitiateCheckout']);
+const ALLOWED = new Set(['PageView', 'InitiateCheckout', 'StartTrial']);
 
 const cookie = (header, name) => {
   const m = (header || '').match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
@@ -36,6 +36,9 @@ export async function onRequestPost({ request, env }) {
       fbc: cookie(cookies, '_fbc'),
     },
   };
+  if (event_name === 'StartTrial') {
+    event.custom_data = { value: 0.99, currency: 'USD', predicted_ltv: 39.99, content_name: 'trial_3d' };
+  }
   if (event_name === 'InitiateCheckout') {
     event.custom_data = {
       value: 0.99,

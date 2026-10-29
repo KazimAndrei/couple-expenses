@@ -28,6 +28,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>coupleexpenses</string>
+				<string>rc-a141ade78b</string>
 			</array>
 		</dict>
 	</array>

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>CoupleExpenses Activation</title>
+<link rel="icon" href="../img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c1311;
+    --card: rgba(255, 255, 255, 0.05);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #f3f1ea;
+    --muted: rgba(243, 241, 234, 0.62);
+    --faint: rgba(243, 241, 234, 0.4);
+    --accent: #3fd39c;
+    --accent-deep: #1d9e75;
+    --on-accent: #06130e;
+    --glow: rgba(29, 158, 117, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100svh;
+    background: var(--bg);
+    background-image: radial-gradient(80% 50% at 50% -10%, var(--glow), transparent 70%);
+    color: var(--text);
+    font: 15px/1.45 Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 460px; margin: 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .brand img { width: 32px; height: 32px; border-radius: 9px; }
+  .done {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent); color: var(--on-accent);
+    box-shadow: 0 10px 30px var(--glow);
+  }
+  .done svg { width: 26px; height: 26px; }
+  h1 { font: 400 40px/1 "Instrument Serif", Georgia, serif; letter-spacing: -0.01em; }
+  h1 em { color: var(--accent); }
+  .lead { color: var(--muted); }
+  .steps { display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
+  .step {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 14px; border-radius: 16px;
+    background: var(--card); border: 1px solid var(--line);
+  }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    flex: none; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 13px;
+    background: rgba(63, 211, 156, 0.15); color: var(--accent);
+  }
+  .step > div { flex: 1; min-width: 0; }
+  .step b { display: block; font-weight: 600; }
+  .step span { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 10px; min-height: 48px; border-radius: 14px;
+    font-weight: 700; font-size: 15.5px; text-decoration: none;
+  }
+  .step .btn span { display: inline; margin: 0; font-size: inherit; color: inherit; }
+  .btn.store { background: var(--text); color: var(--bg); }
+  .btn.store svg { width: 18px; height: 18px; }
+  .btn.activate {
+    background: linear-gradient(180deg, var(--accent), var(--accent-deep)); color: var(--on-accent);
+    box-shadow: 0 10px 30px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+  .qr {
+    display: none; align-items: center; gap: 16px;
+    padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line);
+  }
+  .qr #qr { flex: none; padding: 8px; background: #fff; border-radius: 10px; }
+  .qr #qr img, .qr #qr canvas { display: block; width: 120px; height: 120px; }
+  .qr p { font-size: 13px; color: var(--muted); }
+  .note { font-size: 12px; color: var(--faint); }
+  .note a { color: var(--muted); }
+  @media (hover: hover) and (pointer: fine) { .qr { display: flex; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="brand"><img src="../img/icon.png" alt="">CoupleExpenses</div>
+
+  <div class="done" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+  <h1><span data-t="h1"></span><br><em data-t="h1em"></em></h1>
+  <p class="lead" data-t="lead"></p>
+
+  <section class="steps">
+    <div class="step"><div>
+      <b data-t="s1"></b><span data-t="s1s"></span>
+      <a class="btn store" href="https://apps.apple.com/app/id6799875708">
+        <svg viewBox="0 0 17 20" fill="currentColor" aria-hidden="true"><path d="M14.13 10.62c.02 2.9 2.55 3.86 2.58 3.88-.02.07-.4 1.38-1.33 2.73-.8 1.17-1.63 2.33-2.94 2.36-1.29.02-1.7-.76-3.17-.76-1.47 0-1.93.73-3.14.78-1.27.05-2.23-1.26-3.04-2.42C1.44 14.8.17 10.44 1.87 7.53c.84-1.45 2.35-2.36 3.98-2.39 1.24-.02 2.42.84 3.17.84.76 0 2.19-1.03 3.69-.88.63.03 2.39.25 3.52 1.91-.09.06-2.1 1.23-2.1 3.61ZM11.71 3.5c.67-.81 1.12-1.94 1-3.06-.97.04-2.14.64-2.83 1.45-.62.72-1.16 1.87-1.02 2.97 1.08.08 2.18-.55 2.85-1.36Z"/></svg>
+        <span data-t="store"></span>
+      </a>
+    </div></div>
+    <div class="step"><div><b data-t="s2"></b><span data-t="s2s"></span></div></div>
+    <div class="step"><div>
+      <b data-t="s3"></b><span data-t="s3s"></span>
+      <a class="btn activate" id="activate" href="#" aria-disabled="true"><span data-t="activate"></span></a>
+    </div></div>
+  </section>
+
+  <div class="qr"><div id="qr"></div><p data-t="qr"></p></div>
+
+  <p class="note"><span data-t="note"></span> <a href="mailto:andreikazimov@proton.me">andreikazimov@proton.me</a></p>
+</main>
+
+<script>
+  // Meta Pixel + Conversions API — так же, как на лендинге
+  window.PIXEL_ID = '2939131276448532';
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+  document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', window.PIXEL_ID);
+  fbq('track', 'PageView');
+
+  const TEXT = {
+    en: {
+      h1: 'You’re in.', h1em: 'Now get the app.',
+      lead: 'Your 3-day trial has started. Three quick steps to unlock it on your iPhone:',
+      s1: 'Install CoupleExpenses', s1s: 'Free download from the App Store.', store: 'Download on the App Store',
+      s2: 'Sign in with Apple', s2s: 'Open the app and sign in.',
+      s3: 'Activate your subscription', s3s: 'Come back to this page on your iPhone and tap the button.',
+      activate: 'Activate in the app',
+      qr: 'Paid on a computer? Scan this with your iPhone camera to open this page there.',
+      note: 'The activation link works for 60 minutes; after that we email you a new one. Questions:',
+    },
+    ru: {
+      h1: 'Готово.', h1em: 'Осталось поставить приложение.',
+      lead: 'Пробный период на 3 дня начался. Три шага, чтобы открыть его на iPhone:',
+      s1: 'Установите CoupleExpenses', s1s: 'Бесплатно в App Store.', store: 'Загрузить в App Store',
+      s2: 'Войдите через Apple', s2s: 'Откройте приложение и войдите.',
+      s3: 'Активируйте подписку', s3s: 'Вернитесь на эту страницу на iPhone и нажмите кнопку.',
+      activate: 'Активировать в приложении',
+      qr: 'Оплатили с компьютера? Наведите камеру iPhone на код — эта страница откроется на телефоне.',
+      note: 'Ссылка активации работает 60 минут, потом пришлём новую на почту. Вопросы:',
+    },
+  };
+  let lang = 'en';
+  try { lang = localStorage.getItem('ce_landing_lang') || ''; } catch { /* приватный режим */ }
+  const fromUrl = new URLSearchParams(location.search).get('lang');
+  if (TEXT[fromUrl]) lang = fromUrl;
+  if (!TEXT[lang]) lang = (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = TEXT[lang][el.dataset.t]; });
+
+  // RevenueCat передаёт ссылку активации параметром redeem_url
+  const params = new URLSearchParams(location.search);
+  const redeem = params.get('redeem_url');
+  const activate = document.getElementById('activate');
+  if (redeem && /^rc-[a-z0-9]+:\/\/redeem_web_purchase/i.test(redeem)) {
+    activate.href = redeem;
+    activate.removeAttribute('aria-disabled');
+  }
+
+  // Триал оформлен — главное событие для оптимизации рекламы. Одно на покупку (перезагрузка не дублирует)
+  const key = 'ce_trial_tracked:' + (redeem || params.get('app_user_id') || '');
+  let tracked = false;
+  try { tracked = sessionStorage.getItem(key) === '1'; sessionStorage.setItem(key, '1'); } catch { /* приватный режим */ }
+  // Со второго устройства (по QR) событие не повторяем
+  const sandbox = /pay\.rev\.cat\/sandbox/.test(document.referrer) || params.get('sandbox') === '1';
+  if (!tracked && !sandbox && params.get('from') !== 'qr' && (redeem || params.get('app_user_id'))) {
+    const id = 'StartTrial.' + Date.now() + '.' + Math.random().toString(36).slice(2, 10);
+    const data = { value: 0.99, currency: 'USD', predicted_ltv: 39.99, content_name: 'trial_3d' };
+    fbq('track', 'StartTrial', data, { eventID: id });
+    const payload = JSON.stringify({ event_name: 'StartTrial', event_id: id, event_source_url: location.origin + location.pathname, custom_data: {} });
+    try { if (!navigator.sendBeacon('/api/capi', new Blob([payload], { type: 'application/json' }))) throw 0; }
+    catch { fetch('/api/capi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {}); }
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // Для компьютера: QR ведёт на эту же страницу (со ссылкой активации), чтобы открыть её на iPhone
+  try {
+    if (window.QRCode && matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      new QRCode(document.getElementById('qr'), { text: location.href + (location.search ? '&' : '?') + 'from=qr', width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+    }
+  } catch { /* без QR страница всё равно работает */ }
+</script>
+</body>
+</html>
