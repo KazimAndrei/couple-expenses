@@ -25,7 +25,14 @@ export function renderPaywall(app, { onSuccess, onClose } = {}) {
   // Экран закрыт: после этого ни один отложенный ответ (цены, покупка) не имеет права
   // перерисовать пейволл поверх того, что уже открыл пользователь
   let disposed = false;
-  const dispose = () => { disposed = true; };
+  // Подписку купили на сайте и активировали ссылкой, пока открыт пейволл, — пускаем дальше
+  const onRedeemed = (ev) => {
+    if (disposed || ev.detail?.result !== 'success') return;
+    dispose();
+    onSuccess?.();
+  };
+  window.addEventListener('ce:web-redemption', onRedeemed);
+  const dispose = () => { disposed = true; window.removeEventListener('ce:web-redemption', onRedeemed); };
 
   const priceOf = (key) => {
     const pkg = packages?.[key];

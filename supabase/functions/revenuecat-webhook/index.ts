@@ -5,6 +5,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // app_user_id в RevenueCat = auth.users.id (задаётся в SDK при логине).
 
 const WEBHOOK_SECRET = Deno.env.get("RC_WEBHOOK_SECRET") ?? "";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ok = (body: Record<string, unknown>) =>
+  new Response(JSON.stringify({ ok: true, ...body }), { status: 200, headers: { "Content-Type": "application/json" } });
 
 // Событие RevenueCat → статус подписки в нашей БД
 function mapStatus(type: string, expiresAtMs: number | null): { status: string; willRenew: boolean } {
@@ -45,21 +49,54 @@ Deno.serve(async (req: Request) => {
   }
 
   const ev = payload.event ?? {};
-  const type = String(ev.type ?? "");
-  const appUserId = String(ev.app_user_id ?? "");
-  const productId = ev.product_id ? String(ev.product_id) : null;
-  const periodType = String(ev.period_type ?? "");
-  const expiresAtMs = typeof ev.expiration_at_ms === "number" ? ev.expiration_at_ms : null;
-  const store = ev.store ? String(ev.store) : null;
+  let type = String(ev.type ?? "");
+  let appUserId = String(ev.app_user_id ?? "");
+  let productId = ev.product_id ? String(ev.product_id) : null;
+  let periodType = String(ev.period_type ?? "");
+  let expiresAtMs = typeof ev.expiration_at_ms === "number" ? ev.expiration_at_ms : null;
+  let store = ev.store ? String(ev.store) : null;
 
   // TEST-события RevenueCat приходят с фиктивным юзером — подтверждаем 200, ничего не пишем
   if (type === "TEST") return new Response(JSON.stringify({ ok: true, test: true }), { status: 200 });
-  if (!appUserId) return new Response("no app_user_id", { status: 400 });
 
   const db = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // Журнал событий: по нему переносим веб-покупку, когда её активируют в приложении
+  await db.from("rc_webhook_events").insert({
+    event_type: type,
+    app_user_id: appUserId || null,
+    payload: ev,
+  }).then(({ error }) => { if (error) console.error("event log failed", error); });
+
+  // Оплата на сайте приходит от анонимного покупателя ($RCAnonymousID:…): пользователя Supabase
+  // у него ещё нет. Подписку запишем, когда покупку активируют в приложении (событие TRANSFER).
+  if (type === "TRANSFER") {
+    const to = (Array.isArray(ev.transferred_to) ? ev.transferred_to : []).map(String).filter((id) => UUID.test(id));
+    const from = (Array.isArray(ev.transferred_from) ? ev.transferred_from : []).map(String);
+    if (!to.length || !from.length) return ok({ skipped: "transfer_without_user" });
+    const { data: last } = await db
+      .from("rc_webhook_events")
+      .select("payload")
+      .in("app_user_id", from)
+      .neq("event_type", "TRANSFER")
+      .order("received_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const src = (last?.payload ?? {}) as Record<string, unknown>;
+    if (!src.type) return ok({ skipped: "transfer_source_unknown" });
+    type = String(src.type);
+    appUserId = to[0];
+    productId = src.product_id ? String(src.product_id) : null;
+    periodType = String(src.period_type ?? "");
+    expiresAtMs = typeof src.expiration_at_ms === "number" ? src.expiration_at_ms : null;
+    store = src.store ? String(src.store) : null;
+  }
+
+  if (!appUserId) return new Response("no app_user_id", { status: 400 });
+  if (!UUID.test(appUserId)) return ok({ skipped: "anonymous_buyer", type });
 
   // Пара, которой владеет плательщик
   const { data: couple } = await db

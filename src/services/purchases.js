@@ -59,6 +59,9 @@ export async function initPurchases() {
     }
     configuredUserId = userId;
     diagStep('purchases: configured');
+    // Ссылку активации открыли до входа — активируем сразу, как появился пользователь
+    const pending = takePendingRedemption();
+    if (pending) redeemWebPurchaseUrl(pending).catch(() => {});
   } catch (err) {
     // Не бросаем: вызывающие ждут обычного продолжения, а отклонённый промис
     // без обработчика оставлял пейволл в бесконечной загрузке.
@@ -157,4 +160,51 @@ export async function coupleHasAccess() {
     return { has_access: false, reason: 'error' };
   }
   return data || { has_access: false, reason: 'unknown' };
+}
+
+// --- Покупка на сайте (RevenueCat Web Billing) ---
+// После оплаты на coupleexpenses.com/try человек получает ссылку активации rc-…://redeem_web_purchase.
+// Она переносит анонимную веб-покупку на аккаунт Supabase. До входа ссылку держим и активируем после.
+const PENDING_REDEEM_KEY = 'ce_pending_web_redeem';
+
+export const isRedemptionUrl = (url) => /^rc-[a-z0-9]+:\/\/redeem_web_purchase/i.test(String(url || ''));
+
+function takePendingRedemption() {
+  try {
+    const url = localStorage.getItem(PENDING_REDEEM_KEY);
+    localStorage.removeItem(PENDING_REDEEM_KEY);
+    return url;
+  } catch { return null; }
+}
+
+// Результат: 'success' | 'pending' (ждём входа) | 'other_user' | 'expired' | 'invalid' | 'error'
+export async function redeemWebPurchaseUrl(url) {
+  if (!purchasesAvailable()) return { result: 'error' };
+  if (!currentUserId()) {
+    try { localStorage.setItem(PENDING_REDEEM_KEY, url); } catch { /* приватный режим */ }
+    return { result: 'pending' };
+  }
+  await initPurchases();
+  if (!configuredUserId) {
+    try { localStorage.setItem(PENDING_REDEEM_KEY, url); } catch { /* приватный режим */ }
+    return { result: 'error' };
+  }
+  try {
+    const { webPurchaseRedemption } = await withTimeout('parseRedemption', Purchases.parseAsWebPurchaseRedemption({ urlString: url }), 6000);
+    if (!webPurchaseRedemption) return { result: 'invalid' };
+    const res = await withTimeout('redeemWebPurchase', Purchases.redeemWebPurchase({ webPurchaseRedemption }), 30000);
+    const outcome = {
+      SUCCESS: hasEntitlement(res.customerInfo) ? 'success' : 'error',
+      PURCHASE_BELONGS_TO_OTHER_USER: 'other_user',
+      EXPIRED: 'expired',
+      INVALID_TOKEN: 'invalid',
+    }[res.result] || 'error';
+    const out = { result: outcome, email: res.obfuscatedEmail || null };
+    window.dispatchEvent(new CustomEvent('ce:web-redemption', { detail: out }));
+    return out;
+  } catch (err) {
+    diagError('web redemption failed', err);
+    window.dispatchEvent(new CustomEvent('ce:web-redemption', { detail: { result: 'error' } }));
+    return { result: 'error' };
+  }
 }

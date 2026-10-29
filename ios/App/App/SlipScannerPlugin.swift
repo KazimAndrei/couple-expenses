@@ -27,7 +27,7 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private let work = DispatchQueue(label: "slip-scanner", qos: .userInitiated)
 
-    // Ссылки coupleexpenses://… (виджеты, «Поделиться»). Капаситор рассылает их уведомлением;
+    // Ссылки coupleexpenses://… (виджеты, «Поделиться») и rc-…:// (активация веб-покупки). Капаситор рассылает их уведомлением;
     // на холодном старте JS ещё не подписан — последнюю ссылку держим до takeLaunchUrl.
     private static var pendingUrl: String?
 
@@ -36,7 +36,7 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc private func onOpenUrl(_ note: Notification) {
-        guard let url = (note.object as? [String: Any])?["url"] as? URL, url.scheme == "coupleexpenses" else { return }
+        guard let url = (note.object as? [String: Any])?["url"] as? URL, Self.isOurs(url) else { return }
         if hasListeners("openUrl") {
             notifyListeners("openUrl", data: ["url": url.absoluteString])
         } else {
@@ -45,7 +45,13 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     static func rememberLaunchUrl(_ url: URL) {
-        if url.scheme == "coupleexpenses" { pendingUrl = url.absoluteString }
+        if isOurs(url) { pendingUrl = url.absoluteString }
+    }
+
+    // coupleexpenses://… — виджеты и «Поделиться»; rc-…:// — активация подписки, купленной на сайте
+    private static func isOurs(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "coupleexpenses" || scheme.hasPrefix("rc-")
     }
 
     @objc func takeLaunchUrl(_ call: CAPPluginCall) {

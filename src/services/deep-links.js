@@ -1,4 +1,5 @@
-// Ссылки coupleexpenses://… из виджетов и расширения «Поделиться»:
+// Ссылки coupleexpenses://… из виджетов и расширения «Поделиться», а также rc-…://redeem_web_purchase —
+// активация подписки, купленной на сайте:
 //   add            — форма нового расхода
 //   add?mode=voice — сразу голосовой ввод, mode=qr — сканер QR
 //   import         — проверить присланное через «Поделиться»
@@ -8,9 +9,23 @@ import { Capacitor } from '@capacitor/core';
 import { Capture } from './capture.js';
 import { getState } from '../lib/store.js';
 import { navigate } from '../lib/router.js';
+import { isRedemptionUrl, redeemWebPurchaseUrl } from './purchases.js';
+import { showToast } from './toast.js';
+import { t } from '../lib/i18n.js';
 
+
+// Ссылка активации покупки с сайта (rc-…://redeem_web_purchase?redemption_token=…)
+async function redeem(raw) {
+  const { result, email } = await redeemWebPurchaseUrl(raw);
+  const key = {
+    success: 'web.redeemed', pending: 'web.redeemPending', other_user: 'web.redeemOtherUser',
+    expired: 'web.redeemExpired', invalid: 'web.redeemInvalid',
+  }[result] || 'web.redeemError';
+  showToast(t(key, { email: email || '' }));
+}
 
 function handle(raw) {
+  if (isRedemptionUrl(raw)) { redeem(raw); return; }
   let url;
   try { url = new URL(raw); } catch { return; }
   if (url.protocol !== 'coupleexpenses:') return;
