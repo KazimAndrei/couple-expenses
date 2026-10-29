@@ -211,6 +211,29 @@
     .solo-icon { width: 28px; height: 28px; }
   }
 </style>
+<script>
+  // Meta Pixel + Conversions API: каждое событие уходит и из браузера, и через /api/capi
+  // с одним event_id — Meta склеивает дубли
+  window.PIXEL_ID = '2939131276448532';
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+  document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', window.PIXEL_ID);
+
+  window.trackEvent = function (name, data) {
+    const id = name + '.' + Date.now() + '.' + Math.random().toString(36).slice(2, 10);
+    fbq('track', name, data || {}, { eventID: id });
+    const payload = JSON.stringify({ event_name: name, event_id: id, event_source_url: location.href, custom_data: data || {} });
+    try {
+      if (!navigator.sendBeacon('/api/capi', new Blob([payload], { type: 'application/json' }))) throw 0;
+    } catch {
+      fetch('/api/capi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+    }
+  };
+  trackEvent('PageView');
+</script>
 </head>
 <body>
 <main class="page">
@@ -331,6 +354,15 @@
   const guess = (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
   apply(TEXT[fromUrl] ? fromUrl : TEXT[saved] ? saved : guess);
   document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => apply(b.dataset.lang)));
+
+  // Клик по кнопке — конверсия для оптимизации рекламы; переход чуть ждём, чтобы событие успело уйти
+  document.getElementById('cta').addEventListener('click', (ev) => {
+    if (!window.trackEvent) return;
+    ev.preventDefault();
+    const href = ev.currentTarget.href;
+    trackEvent('InitiateCheckout', { value: 0.99, currency: 'USD', content_name: 'trial_3d', content_category: document.documentElement.lang });
+    setTimeout(() => { location.href = href; }, 300);
+  });
 </script>
 </body>
 </html>
