@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CoupleExpenses Trial</title>
+<meta name="description" content="Shared budget for couples. Try CoupleExpenses for 3 days for $0.99.">
+<link rel="icon" href="img/icon.png">
+<meta property="og:title" content="CoupleExpenses — money, together">
+<meta property="og:description" content="Shared budget for couples. Try it for 3 days.">
+<meta property="og:image" content="https://coupleexpenses.com/try/img/p_stacks.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Caveat:wght@600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c1311;
+    --bg-2: #121b18;
+    --card: rgba(255, 255, 255, 0.05);
+    --line: rgba(255, 255, 255, 0.09);
+    --text: #f3f1ea;
+    --muted: rgba(243, 241, 234, 0.62);
+    --faint: rgba(243, 241, 234, 0.4);
+    --accent: #3fd39c;
+    --accent-deep: #1d9e75;
+    --on-accent: #06130e;
+    --glow: rgba(29, 158, 117, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(80% 50% at 50% -10%, var(--glow), transparent 70%),
+      radial-gradient(60% 40% at 0% 100%, rgba(84, 72, 160, 0.18), transparent 70%),
+      radial-gradient(60% 40% at 100% 100%, rgba(170, 90, 60, 0.14), transparent 70%);
+    color: var(--text);
+    font: 15px/1.4 Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .page {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  /* Шапка */
+  .top { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand img { width: 32px; height: 32px; border-radius: 9px; }
+  .brand small { display: block; font-weight: 400; font-size: 11.5px; color: var(--faint); }
+  .lang { display: flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .lang button {
+    border: 0; background: none; color: var(--muted); font: 600 11.5px Inter, sans-serif;
+    padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .lang button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+
+  /* Заголовок */
+  .hero h1 {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(38px, 10.5vw, 46px);
+    line-height: 0.98;
+    letter-spacing: -0.01em;
+  }
+  .hero h1 em { color: var(--accent); }
+  .hero p { margin-top: 10px; color: var(--muted); font-size: 15px; max-width: 34ch; }
+
+  /* Полароиды */
+  .reel {
+    margin: 0 -16px;
+    overflow: hidden;
+    padding: 6px 0 12px;
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  }
+  .track { display: flex; gap: 6px; width: max-content; animation: slide 40s linear infinite; }
+  @keyframes slide { to { transform: translateX(-50%); } }
+  .polaroid {
+    flex: none;
+    width: 132px;
+    padding: 7px 7px 0;
+    background: #f5f2ea;
+    border-radius: 3px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 14px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+    transform: rotate(var(--r, 0deg)) translateY(var(--y, 0px));
+  }
+  .polaroid img {
+    display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+    filter: saturate(1.05) contrast(1.04);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  }
+  .polaroid figcaption {
+    font: 600 16px/1 Caveat, "Segoe Print", cursive;
+    color: #26332e;
+    text-align: center;
+    padding: 8px 2px 9px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Фишки */
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .feature {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 11px 12px;
+  }
+  .feature svg { width: 18px; height: 18px; color: var(--accent); float: left; margin: 0 7px 0 0; }
+  .feature b { display: block; margin-top: 0; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .feature span { display: block; clear: both; margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.3; }
+
+  /* Соло: отдельная выделенная фишка для тех, у кого нет пары */
+  .solo {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: linear-gradient(90deg, rgba(63, 211, 156, 0.16), rgba(63, 211, 156, 0.05));
+    border: 1px solid rgba(63, 211, 156, 0.45);
+  }
+  .solo-icon {
+    flex: none; width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: var(--accent); color: var(--on-accent);
+  }
+  .solo-icon svg { width: 19px; height: 19px; }
+  .solo b { display: block; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .solo span { display: block; margin-top: 1px; font-size: 12px; color: var(--muted); line-height: 1.3; }
+
+  /* Кнопка */
+  .offer { margin-top: auto; text-align: center; }
+  .cta {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; min-height: 58px; border-radius: 16px; text-decoration: none;
+    background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+    color: var(--on-accent); font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+    box-shadow: 0 12px 34px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    transition: transform 0.15s ease;
+  }
+  .cta:active { transform: scale(0.98); }
+  .price { margin-top: 9px; font-size: 13.5px; color: var(--text); }
+  .price s { color: var(--faint); }
+  .fine { margin-top: 6px; font-size: 10.5px; color: var(--faint); line-height: 1.4; }
+  .fine a { color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .track, .wall .polaroid { animation: none; }
+  }
+
+  /* Широкий экран: текст слева, две колонки баннеров справа */
+  @media (min-width: 900px) {
+    body { overflow: hidden; }
+    .page {
+      max-width: 1180px;
+      height: 100vh;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+      column-gap: 64px;
+      row-gap: 0;
+      padding: 28px 40px;
+    }
+    .top { grid-column: 1 / -1; }
+    .left { display: flex; flex-direction: column; justify-content: center; gap: 26px; max-width: 500px; }
+    .hero h1 { font-size: 68px; }
+    .hero p { font-size: 17px; }
+    .offer { margin-top: 4px; text-align: left; }
+    .cta { max-width: 420px; }
+    .reel { display: none; }
+    .wall { position: relative; margin: -28px 0; }
+    .wall .polaroid {
+      position: absolute; width: clamp(170px, 15vw, 215px);
+      left: var(--x); top: var(--t);
+      animation: drop 0.55s cubic-bezier(.2, .9, .3, 1.2) both;
+      animation-delay: var(--d);
+      transition: transform 0.25s ease;
+    }
+    .wall .polaroid figcaption { font-size: 22px; padding: 12px 2px 15px; }
+    .wall .polaroid:hover { transform: rotate(0deg) scale(1.04); z-index: 9; }
+    @keyframes drop {
+      from { opacity: 0; transform: rotate(calc(var(--r) * 2.5)) translateY(-40px) scale(1.12); }
+      to { opacity: 1; transform: rotate(var(--r)) translateY(0) scale(1); }
+    }
+  }
+  @media (max-width: 899px) {
+    .wall { display: none; }
+    .left { display: contents; }
+  }
+  /* Невысокие телефоны: подзаголовок дублирует фишки — убираем, чтобы кнопка осталась на экране */
+  @media (max-width: 899px) and (max-height: 880px) {
+    .hero p { display: none; }
+  }
+  /* Низкие телефоны (SE): ужимаем, чтобы всё влезло в один экран */
+  @media (max-width: 899px) and (max-height: 700px) {
+    .page { gap: 12px; }
+    .hero h1 { font-size: 34px; }
+    .hero p { display: none; }
+    .polaroid { width: 104px; }
+    .hero h1 { font-size: 32px; }
+    .polaroid figcaption { font-size: 14px; padding: 7px 2px 8px; }
+    .feature span, .solo span { display: none; }
+    .solo { padding: 8px 10px; }
+    .solo-icon { width: 28px; height: 28px; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div class="brand">
+      <img src="img/icon.png" alt="">
+      <div>CoupleExpenses<small data-t="tag"></small></div>
+    </div>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="ru">RU</button>
+    </div>
+  </header>
+
+  <div class="left">
+    <section class="hero">
+      <h1><span data-t="h1"></span><br><em data-t="h1em"></em></h1>
+      <p data-t="sub"></p>
+    </section>
+
+    <div class="reel" aria-hidden="true"><div class="track" id="reel"></div></div>
+
+    <section class="features">
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M15.5 14.2c2.9-.4 5.5 1.4 5.5 4.3"/></svg>
+        <b data-t="f1"></b><span data-t="f1s"></span>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
+        <b data-t="f2"></b><span data-t="f2s"></span>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <b data-t="f3"></b><span data-t="f3s"></span>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>
+        <b data-t="f4"></b><span data-t="f4s"></span>
+      </div>
+    </section>
+
+    <section class="solo">
+      <div class="solo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></svg></div>
+      <div><b data-t="solo"></b><span data-t="solos"></span></div>
+    </section>
+
+    <section class="offer">
+      <a class="cta" href="https://apps.apple.com/app/id6799875708" id="cta"><span data-t="cta"></span></a>
+      <p class="price" data-t="price"></p>
+      <p class="fine"><span data-t="fine"></span> <a href="https://coupleexpenses.com/terms.html" data-t="terms"></a> · <a href="https://coupleexpenses.com/privacy.html" data-t="privacy"></a></p>
+    </section>
+  </div>
+
+  <div class="wall" id="wall" aria-hidden="true"></div>
+</main>
+
+<script>
+  const TEXT = {
+    en: {
+      tag: 'shared budget for two',
+      h1: 'Money, together.',
+      h1em: 'no awkward math.',
+      sub: 'Every expense, who paid, and what is left this month.',
+      f1: 'Shared in real time', f1s: 'Every expense, live for both',
+      f2: 'Scan & import', f2s: 'Receipts, QR & bank slips',
+      f3: 'Just say it', f3s: '“Coffee 4.50” and it is logged',
+      f4: 'Goals & widgets', f4s: 'Right on your home screen',
+      solo: 'No partner? Works solo too', solos: 'Track your own spending now, invite someone later',
+      cta: 'Start 3-day trial for $0.99',
+      price: 'then $39.99/month · cancel anytime',
+      fine: 'Auto-renews at $39.99/month after the 3-day trial unless canceled at least 24 hours before it ends.',
+      terms: 'Terms', privacy: 'Privacy',
+    },
+    ru: {
+      tag: 'общий бюджет на двоих',
+      h1: 'Деньги вместе.',
+      h1em: 'без неловких подсчётов.',
+      sub: 'Каждая трата, кто платил и сколько осталось в этом месяце.',
+      f1: 'Общий бюджет', f1s: 'Каждая трата — сразу у обоих',
+      f2: 'Скан и импорт', f2s: 'Чеки, QR и слипы банков',
+      f3: 'Просто скажи', f3s: '«Кофе 120» — и расход записан',
+      f4: 'Цели и виджеты', f4s: 'Прямо на экране телефона',
+      solo: 'Нет пары? Ведите учёт сами', solos: 'Свои расходы под контролем, партнёра можно позвать потом',
+      cta: 'Попробовать 3 дня за $0.99',
+      price: 'далее $39.99 в месяц · отмена в любой момент',
+      fine: 'После 3 дней подписка продлевается автоматически за $39.99 в месяц, если не отменить её минимум за 24 часа до конца пробного периода.',
+      terms: 'Условия', privacy: 'Конфиденциальность',
+    },
+  };
+  // Снимки и подписи «от руки» на рамке
+  const PHOTOS = ['stacks', 'hand', 'bag', 'duffel', 'sill'];
+  const CAPTIONS = {
+    en: ['saved with this app', 'trip fund ✓', 'no awkward math', 'saving together', 'goal reached!'],
+    ru: ['накопили ♥', 'на отпуск ✓', 'без споров', 'копим вместе', 'цель достигнута!'],
+  };
+  const TILT = [-4, 3, -2, 5, -3];
+  // Раскладка коллажа на десктопе: x, y в процентах колонки
+  const SPOTS = [[3, 4], [54, 2], [29, 36], [2, 66], [56, 64]];
+
+  const card = (lang, i, style = '') =>
+    `<figure class="polaroid" style="--r:${TILT[i]}deg;${style}"><img src="img/p_${PHOTOS[i]}.jpg" alt="" decoding="async"><figcaption>${CAPTIONS[lang][i]}</figcaption></figure>`;
+
+  function apply(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = TEXT[lang][el.dataset.t]; });
+    document.querySelectorAll('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    // Ленту дублируем, чтобы она крутилась без шва
+    const row = PHOTOS.map((_, i) => card(lang, i, `--y:${i % 2 ? 6 : -2}px`)).join('');
+    document.getElementById('reel').innerHTML = row + row;
+    document.getElementById('wall').innerHTML = PHOTOS
+      .map((_, i) => card(lang, i, `--x:${SPOTS[i][0]}%;--t:${SPOTS[i][1]}%;--d:${0.08 + i * 0.12}s`)).join('');
+    try { localStorage.setItem('ce_landing_lang', lang); } catch { /* приватный режим */ }
+  }
+
+  let saved = null;
+  try { saved = localStorage.getItem('ce_landing_lang'); } catch { /* приватный режим */ }
+  const fromUrl = new URLSearchParams(location.search).get('lang');
+  const guess = (navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  apply(TEXT[fromUrl] ? fromUrl : TEXT[saved] ? saved : guess);
+  document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => apply(b.dataset.lang)));
+</script>
+</body>
+</html>
