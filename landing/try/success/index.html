@@ -117,16 +117,9 @@
   <p class="note"><span data-t="note"></span> <a href="mailto:andreikazimov@proton.me">andreikazimov@proton.me</a></p>
 </main>
 
+<script src="/try/track.js"></script>
 <script>
-  // Meta Pixel + Conversions API — так же, как на лендинге
-  window.PIXEL_ID = '2939131276448532';
-  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-  document,'script','https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', window.PIXEL_ID);
-  fbq('track', 'PageView');
+  trackEvent('PageView');
 
   const TEXT = {
     en: {
@@ -167,19 +160,31 @@
     activate.removeAttribute('aria-disabled');
   }
 
-  // Триал оформлен — главное событие для оптимизации рекламы. Одно на покупку (перезагрузка не дублирует)
-  const key = 'ce_trial_tracked:' + (redeem || params.get('app_user_id') || '');
+  // Триал оформлен — главное событие для оптимизации рекламы. Браузер и сервер шлют его с одним
+  // event_id (по id покупателя RevenueCat), сервер добавляет email и страну из покупки.
+  const appUserId = params.get('app_user_id') || '';
+  const anon = appUserId.match(/^\$RCAnonymousID:([0-9a-f]{32})$/);
+  const key = 'ce_trial_tracked:' + appUserId;
   let tracked = false;
   try { tracked = sessionStorage.getItem(key) === '1'; sessionStorage.setItem(key, '1'); } catch { /* приватный режим */ }
-  // Со второго устройства (по QR) событие не повторяем
+  // Со второго устройства (по QR) и из тестовой оплаты событие не шлём
   const sandbox = /pay\.rev\.cat\/sandbox/.test(document.referrer) || params.get('sandbox') === '1';
-  if (!tracked && !sandbox && params.get('from') !== 'qr' && (redeem || params.get('app_user_id'))) {
-    const id = 'StartTrial.' + Date.now() + '.' + Math.random().toString(36).slice(2, 10);
-    const data = { value: 0.99, currency: 'USD', predicted_ltv: 39.99, content_name: 'trial_3d' };
-    fbq('track', 'StartTrial', data, { eventID: id });
-    const payload = JSON.stringify({ event_name: 'StartTrial', event_id: id, event_source_url: location.origin + location.pathname, custom_data: {} });
-    try { if (!navigator.sendBeacon('/api/capi', new Blob([payload], { type: 'application/json' }))) throw 0; }
-    catch { fetch('/api/capi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {}); }
+  if (anon && !tracked && !sandbox && params.get('from') !== 'qr') {
+    const id = 'StartTrial.' + anon[1];
+    ceTrack.event('StartTrial', { value: 0.99, currency: 'USD', predicted_ltv: 39.99, content_name: 'trial_3d' }, id);
+    fetch('https://xijqzhpqaqmqqerhxmwl.supabase.co/functions/v1/meta-start-trial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify({
+        app_user_id: appUserId,
+        event_id: id,
+        event_source_url: location.origin + location.pathname,
+        external_id: ceTrack.eid,
+        fbp: ceTrack.cookie('_fbp'),
+        fbc: ceTrack.cookie('_fbc'),
+      }),
+    }).catch(() => {});
   }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
