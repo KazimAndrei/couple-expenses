@@ -194,6 +194,13 @@ subscribe(() => {
   clearTimeout(widgetTimer);
   widgetTimer = setTimeout(syncWidgets, 1500);
 });
+// Добавили расход и сразу ушли на домашний экран — снимок пишем сейчас, не дожидаясь паузы
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden' || !widgetTimer) return;
+  clearTimeout(widgetTimer);
+  widgetTimer = null;
+  syncWidgets();
+});
 
 initTheme();
 initDiagnostics();

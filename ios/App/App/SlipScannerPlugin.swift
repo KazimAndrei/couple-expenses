@@ -26,6 +26,8 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private let work = DispatchQueue(label: "slip-scanner", qos: .userInitiated)
+    // Снимок для виджета — отдельно: в очереди сканирования он ждал поиска чеков в фото (до десятков секунд)
+    private let widgetQueue = DispatchQueue(label: "widget-snapshot", qos: .userInitiated)
 
     // Ссылки coupleexpenses://… (виджеты, «Поделиться») и rc-…:// (активация веб-покупки). Капаситор рассылает их уведомлением;
     // на холодном старте JS ещё не подписан — последнюю ссылку держим до takeLaunchUrl.
@@ -62,7 +64,7 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func setWidgetData(_ call: CAPPluginCall) {
         let json = call.getString("json") ?? ""
-        work.async {
+        widgetQueue.async {
             WidgetStore.write(json)
             if #available(iOS 14.0, *) { WidgetCenter.shared.reloadAllTimelines() }
             call.resolve()
