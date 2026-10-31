@@ -370,6 +370,12 @@ export function guessCategoryId(name, categories, labelOf = (n) => n, extraText 
   return cat?.id || null;
 }
 
+// Перевод человеку (PromptPay и т.п.), а не оплата в магазине
+export function isPersonTransfer(slip) {
+  if (!slip?.receiver || slip.kind === 'document') return false;
+  return !CATEGORY_HINTS.some(([, re]) => re.test(slip.receiver)) && /promptpay|พร้อมเพย์|โอนเงิน|transfer/i.test(slip.text || '');
+}
+
 // Описание расхода по слипу: «Tops Kamala» или «Перевод · Amonrat Banth»
 export function slipDescription(slip, transferWord) {
   if (!slip?.receiver) return slip?.provider || '';

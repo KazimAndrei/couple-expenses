@@ -2,9 +2,9 @@
 // Каждую строку можно поправить (сумма, описание, категория) или снять галочку; добавляем одним нажатием.
 import { getState, isSolo } from '../lib/store.js';
 import { addExpense, uploadReceipt } from '../lib/supabase.js';
-import { CURRENCIES, escapeHtml, formatDate, icon, todayStr } from '../lib/utils.js';
+import { CURRENCIES, catTile, escapeHtml, formatDate, icon, todayStr } from '../lib/utils.js';
 import { categoryLabel, t } from '../lib/i18n.js';
-import { slipCategoryId, slipDescription } from '../lib/slips.js';
+import { isPersonTransfer, slipCategoryId, slipDescription } from '../lib/slips.js';
 import { memberDisplayLabel, resolveMemberSides } from '../lib/member-filters.js';
 import { enableModalSwipe } from './modal-swipe.js';
 import { clearInbox, markSeen, photoBlob, seenKeys } from '../services/capture.js';
@@ -16,19 +16,31 @@ import { getReadableError } from '../services/errors.js';
 const e = escapeHtml;
 
 export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'shared', defaultCategoryId = null } = {}) {
-  const { categories, couple, profile, members } = getState();
+  const { categories, couple, profile, members, expenses } = getState();
   const sides = resolveMemberSides(members);
   const payerMembers = [sides.memberA, sides.memberB].filter(Boolean);
   const cur = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '';
   const otherCurrency = couple?.currency && couple.currency !== 'THB';
 
-  const rows = items.map((it, i) => ({
-    ...it,
-    idx: i,
-    checked: !it.alreadyAdded,
-    description: slipDescription(it.slip, t('capture.transfer')) || t('capture.payment'),
-    categoryId: slipCategoryId(it.slip, categories, categoryLabel, defaultCategoryId),
-  }));
+  // Переводу человеку — категорию, которую уже ставили этому получателю
+  const pastCategoryId = (receiver) => {
+    if (!receiver) return null;
+    const needle = receiver.toLowerCase();
+    const past = (expenses || []).find((x) => x.description?.toLowerCase().includes(needle) && categories.some((c) => c.id === x.category_id));
+    return past?.category_id || null;
+  };
+  const rows = items.map((it, i) => {
+    const person = isPersonTransfer(it.slip);
+    return {
+      ...it,
+      idx: i,
+      checked: !it.alreadyAdded,
+      title: slipDescription(it.slip, t('capture.transfer')) || t('capture.payment'),
+      // Название у перевода человеку пустое — его вводят сами; у магазина подставляем
+      description: person ? '' : (slipDescription(it.slip) || ''),
+      categoryId: (person && pastCategoryId(it.slip.receiver)) || slipCategoryId(it.slip, categories, categoryLabel, defaultCategoryId),
+    };
+  });
 
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -45,13 +57,20 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
           <button type="button" class="pay-check" aria-label="${t('capture.include')}">${icon('check', 14, '#fff', 3)}</button>
           <div class="pay-thumb" data-thumb="${r.idx}"></div>
           <div class="pay-main">
-            <input class="pay-desc" value="${e(r.description)}" aria-label="${t('home.description')}">
+            <div class="pay-title">${e(r.title)}</div>
             <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${e(meta(r.slip))}</div>
-            <select class="pay-cat" aria-label="${t('common.category')}">
-              ${categories.map((c) => `<option value="${c.id}" ${c.id === r.categoryId ? 'selected' : ''}>${e(categoryLabel(c.name))}</option>`).join('')}
-            </select>
           </div>
           <label class="pay-amount"><span>${e(cur)}</span><input type="number" inputmode="decimal" step="0.01" min="0" value="${r.slip.amount ?? ''}" aria-label="${t('common.amount')}"></label>
+          <div class="pay-extra">
+            <input type="text" class="form-input pay-desc" value="${e(r.description)}" placeholder="${t('capture.namePlaceholder')}" autocomplete="off" aria-label="${t('home.description')}">
+            <div class="pay-cats" role="radiogroup" aria-label="${t('common.category')}">
+              ${categories.map((c) => `
+              <button type="button" class="cat-option ${c.id === r.categoryId ? 'selected' : ''}" data-cat="${c.id}" role="radio" aria-checked="${c.id === r.categoryId}">
+                ${catTile(c.icon, c.color, 38)}
+                <span class="cat-name">${e(categoryLabel(c.name))}</span>
+              </button>`).join('')}
+            </div>
+          </div>
         </div>`).join('')}
       </div>
       ${isSolo() ? '' : `
@@ -125,6 +144,18 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
 
   backdrop.querySelectorAll('.pay-row').forEach((rowEl) => {
     const r = rows[Number(rowEl.dataset.idx)];
+    const strip = rowEl.querySelector('.pay-cats');
+    strip.querySelectorAll('.cat-option').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        strip.querySelectorAll('.cat-option').forEach((o) => { o.classList.remove('selected'); o.setAttribute('aria-checked', 'false'); });
+        opt.classList.add('selected');
+        opt.setAttribute('aria-checked', 'true');
+        r.categoryId = opt.dataset.cat;
+        hapticSelect();
+      });
+    });
+    // Выбранная категория сразу видна, даже если она в конце ленты
+    requestAnimationFrame(() => strip.querySelector('.selected')?.scrollIntoView({ inline: 'center', block: 'nearest' }));
     rowEl.querySelector('.pay-check').addEventListener('click', () => {
       r.checked = !r.checked;
       rowEl.classList.toggle('on', r.checked);
@@ -147,8 +178,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
     for (const r of chosen) {
       const rowEl = backdrop.querySelector(`.pay-row[data-idx="${r.idx}"]`);
       r.amount = parseFloat(rowEl.querySelector('.pay-amount input').value);
-      r.description = rowEl.querySelector('.pay-desc').value.trim() || t('capture.payment');
-      r.categoryId = rowEl.querySelector('.pay-cat').value;
+      r.description = rowEl.querySelector('.pay-desc').value.trim() || r.title;
     }
     const bad = chosen.find((r) => !(r.amount > 0));
     if (bad) {
