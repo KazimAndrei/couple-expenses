@@ -362,7 +362,8 @@
     web: 'https://pay.rev.cat/hnofmvslooamixkc/',
     sandbox: 'https://pay.rev.cat/sandbox/zqspmadndytvwqoy/',
   };
-  const checkoutMode = new URLSearchParams(location.search).get('checkout') === 'sandbox' ? 'sandbox' : 'appstore';
+  const checkoutParam = new URLSearchParams(location.search).get('checkout');
+  const checkoutMode = CHECKOUT[checkoutParam] ? checkoutParam : 'web';
   document.getElementById('cta').href = CHECKOUT[checkoutMode];
 
   // Клик по кнопке — конверсия для оптимизации рекламы; переход чуть ждём, чтобы событие успело уйти
