@@ -7,6 +7,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const WEBHOOK_SECRET = Deno.env.get("RC_WEBHOOK_SECRET") ?? "";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Служебные события RevenueCat без состояния подписки
+const NON_SUBSCRIPTION = ["TRANSFER", "PURCHASE_REDEEMED", "INVOICE_ISSUANCE", "TEST"];
+
 const ok = (body: Record<string, unknown>) =>
   new Response(JSON.stringify({ ok: true, ...body }), { status: 200, headers: { "Content-Type": "application/json" } });
 
@@ -55,6 +58,7 @@ Deno.serve(async (req: Request) => {
   let periodType = String(ev.period_type ?? "");
   let expiresAtMs = typeof ev.expiration_at_ms === "number" ? ev.expiration_at_ms : null;
   let store = ev.store ? String(ev.store) : null;
+  let environment = ev.environment ? String(ev.environment) : null;
 
   // TEST-события RevenueCat приходят с фиктивным юзером — подтверждаем 200, ничего не пишем
   if (type === "TEST") return new Response(JSON.stringify({ ok: true, test: true }), { status: 200 });
@@ -72,27 +76,41 @@ Deno.serve(async (req: Request) => {
   }).then(({ error }) => { if (error) console.error("event log failed", error); });
 
   // Оплата на сайте приходит от анонимного покупателя ($RCAnonymousID:…): пользователя Supabase
-  // у него ещё нет. Подписку запишем, когда покупку активируют в приложении (событие TRANSFER).
-  if (type === "TRANSFER") {
-    const to = (Array.isArray(ev.transferred_to) ? ev.transferred_to : []).map(String).filter((id) => UUID.test(id));
-    const from = (Array.isArray(ev.transferred_from) ? ev.transferred_from : []).map(String);
-    if (!to.length || !from.length) return ok({ skipped: "transfer_without_user" });
+  // у него ещё нет. Подписку запишем, когда покупку активируют в приложении: RevenueCat шлёт
+  // PURCHASE_REDEEMED (покупатель склеен с аккаунтом, redeemed_by) или TRANSFER (перенесён).
+  if (type === "TRANSFER" || type === "PURCHASE_REDEEMED") {
+    const ids = (v: unknown) => (Array.isArray(v) ? v : []).map(String);
+    const people = type === "TRANSFER" ? ids(ev.transferred_to) : ids(ev.redeemed_by);
+    const to = people.filter((id) => UUID.test(id));
+    const from = type === "TRANSFER"
+      ? ids(ev.transferred_from)
+      : [...people, ...ids(ev.redeemed_from)].filter((id) => !UUID.test(id));
+    if (!to.length || !from.length) return ok({ skipped: "redeem_without_user", type });
     const { data: last } = await db
       .from("rc_webhook_events")
       .select("payload")
       .in("app_user_id", from)
-      .neq("event_type", "TRANSFER")
+      .not("event_type", "in", `(${NON_SUBSCRIPTION.join(",")})`)
       .order("received_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     const src = (last?.payload ?? {}) as Record<string, unknown>;
-    if (!src.type) return ok({ skipped: "transfer_source_unknown" });
+    if (!src.type) return ok({ skipped: "redeem_source_unknown", type });
     type = String(src.type);
     appUserId = to[0];
     productId = src.product_id ? String(src.product_id) : null;
     periodType = String(src.period_type ?? "");
     expiresAtMs = typeof src.expiration_at_ms === "number" ? src.expiration_at_ms : null;
     store = src.store ? String(src.store) : null;
+    environment = src.environment ? String(src.environment) : environment;
+  } else if (NON_SUBSCRIPTION.includes(type)) {
+    return ok({ skipped: "not_subscription_event", type });
+  }
+
+  // Продления веб-подписки после активации могут прийти на анонимный id — аккаунт есть в aliases
+  if (appUserId && !UUID.test(appUserId)) {
+    const known = [ev.original_app_user_id, ...(Array.isArray(ev.aliases) ? ev.aliases : [])].map(String);
+    appUserId = known.find((id) => UUID.test(id)) ?? appUserId;
   }
 
   if (!appUserId) return new Response("no app_user_id", { status: 400 });
@@ -140,6 +158,7 @@ Deno.serve(async (req: Request) => {
     will_renew: willRenew,
     expires_at: expiresAtMs ? new Date(expiresAtMs).toISOString() : null,
     store,
+    ...(environment ? { environment } : {}),
     updated_at: new Date().toISOString(),
   }, { onConflict: "owner_id" });
 
