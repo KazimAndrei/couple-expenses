@@ -20,6 +20,8 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "scanQr", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takeInbox", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearInbox", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeWalletPayments", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearWalletPayments", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "listen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetData", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takeLaunchUrl", returnType: CAPPluginReturnPromise),
@@ -271,6 +273,20 @@ public class SlipScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         let ids = call.getArray("ids", String.self) ?? []
         work.async {
             ids.forEach { ShareInbox.remove($0) }
+            call.resolve()
+        }
+    }
+
+    // Оплаты Apple Pay из автоматизации «Команд» (WalletPaymentIntent.swift)
+
+    @objc func takeWalletPayments(_ call: CAPPluginCall) {
+        work.async { call.resolve(["items": WalletInbox.all()]) }
+    }
+
+    @objc func clearWalletPayments(_ call: CAPPluginCall) {
+        let ids = call.getArray("ids", String.self) ?? []
+        work.async {
+            ids.forEach { WalletInbox.remove($0) }
             call.resolve()
         }
     }

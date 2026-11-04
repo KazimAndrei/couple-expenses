@@ -1,0 +1,8 @@
+/* Действие «Команд» и напоминание об оплате Apple Pay */
+"Log Apple Pay payment" = "Log Apple Pay payment";
+"Saves a Wallet payment to CoupleExpenses. Use it in a Transaction automation." = "Saves a Wallet payment to CoupleExpenses. Use it in a Transaction automation.";
+"Amount" = "Amount";
+"Merchant" = "Merchant";
+"Card" = "Card";
+"Log ${amount} at ${merchant}" = "Log ${amount} at ${merchant}";
+"Tap to add it to your expenses" = "Tap to add it to your expenses";

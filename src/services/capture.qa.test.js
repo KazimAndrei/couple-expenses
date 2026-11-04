@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const plugin = vi.hoisted(() => ({
   takeInbox: vi.fn(async () => ({ items: [] })),
+  takeWalletPayments: vi.fn(async () => ({ items: [] })),
+  clearWalletPayments: vi.fn(async () => ({})),
   scanPhotos: vi.fn(async () => ({ status: 'granted', items: [] })),
   clearInbox: vi.fn(async () => ({})),
   photoAccess: vi.fn(async () => ({ status: 'granted' })),
@@ -22,7 +24,7 @@ vi.stubGlobal('localStorage', {
   removeItem: (k) => store.delete(k),
 });
 
-const { collectPayments, markSeen, readSlipSettings, writeSlipSettings, seenKeys, clearInbox } = await import('./capture.js');
+const { collectPayments, markSeen, readSlipSettings, writeSlipSettings, seenKeys, clearInbox, isWalletAutomationAvailable } = await import('./capture.js');
 
 const NOW = new Date('2026-10-28T20:00:00+07:00');
 const JPEG = Buffer.from('fake').toString('base64');
@@ -38,6 +40,7 @@ beforeEach(() => {
   native.on = true;
   Object.values(plugin).forEach((fn) => fn.mockReset());
   plugin.takeInbox.mockResolvedValue({ items: [] });
+  plugin.takeWalletPayments.mockResolvedValue({ items: [] });
   plugin.scanPhotos.mockResolvedValue({ status: 'granted', items: [] });
   plugin.clearInbox.mockResolvedValue({});
 });
@@ -88,7 +91,7 @@ describe('collectPayments: работает', () => {
 
   it('битый JSON настроек → значения по умолчанию; seen ограничен 400', () => {
     store.set('ce_slip_import_v1', '{bad');
-    expect(readSlipSettings()).toEqual({ enabled: null, since: 0, seen: [], pending: [] });
+    expect(readSlipSettings()).toEqual({ enabled: null, since: 0, seen: [], pending: [], walletSeen: false, walletHintClosed: false });
     writeSlipSettings({ seen: Array.from({ length: 1000 }, (_, i) => `asset:${i}`) });
     expect(readSlipSettings().seen).toHaveLength(400);
     expect(readSlipSettings().seen[0]).toBe('asset:600');
@@ -122,6 +125,49 @@ describe('collectPayments: найденные баги', () => {
     expect(shared).toHaveLength(1);
     markSeen(seenKeys(shared[0])); // как делает runPaymentCheck для одиночного файла
     plugin.scanPhotos.mockResolvedValue({ status: 'granted', items: [photoItem('P9', NOW.getTime() - 500, slipNoRef)], processedUntil: NOW.getTime() - 500 });
+    expect(await collectPayments({ now: NOW })).toEqual([]);
+  });
+});
+
+describe('оплаты Apple Pay', () => {
+  it.each([
+    ['iPhone OS 16_7', true, false],
+    ['iPhone OS 17_0', true, true],
+    ['iPhone OS 18_6', true, true],
+    ['iPhone OS 18_6', false, false],
+  ])('автоматизация доступна: %s, native=%s → %s', (os, isNative, expected) => {
+    vi.stubGlobal('navigator', { userAgent: `Mozilla/5.0 (iPhone; CPU ${os} like Mac OS X)` });
+    native.on = isNative;
+    expect(isWalletAutomationAvailable()).toBe(expected);
+  });
+
+  const pay = { id: '1-a', amount: 'THB 110.00', merchant: 'EVP* The Empower 888', card: 'RedotPay', created: NOW.getTime() };
+
+  it('показываются и без включённого импорта слипов', async () => {
+    plugin.takeWalletPayments.mockResolvedValue({ items: [pay] });
+    const [item] = await collectPayments({ now: NOW });
+    expect(item.source).toBe('wallet');
+    expect(item.slip).toMatchObject({ amount: 110, currency: 'THB', receiver: 'The Empower 888' });
+    expect(readSlipSettings().walletSeen).toBe(true);
+  });
+
+  it('очищаются своим методом, а не входящими «Поделиться»', async () => {
+    plugin.takeWalletPayments.mockResolvedValue({ items: [pay] });
+    const items = await collectPayments({ now: NOW });
+    await clearInbox(items);
+    expect(plugin.clearWalletPayments).toHaveBeenCalledWith({ ids: ['1-a'] });
+    expect(plugin.clearInbox).not.toHaveBeenCalled();
+  });
+
+  it('уже добавленная не предлагается снова и убирается из входящих', async () => {
+    plugin.takeWalletPayments.mockResolvedValue({ items: [pay] });
+    markSeen(['wallet:1-a']);
+    expect(await collectPayments({ now: NOW })).toEqual([]);
+    expect(plugin.clearWalletPayments).toHaveBeenCalledWith({ ids: ['1-a'] });
+  });
+
+  it('старая сборка без метода не ломает остальной сбор', async () => {
+    plugin.takeWalletPayments.mockRejectedValue(new Error('not implemented'));
     expect(await collectPayments({ now: NOW })).toEqual([]);
   });
 });

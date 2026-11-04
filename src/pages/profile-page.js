@@ -17,7 +17,8 @@ import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openDeleteAccountDialog } from '../components/delete-account-dialog.js';
 import { setSoundsEnabled, soundAdd, soundsEnabled } from '../services/sounds.js';
-import { isCaptureAvailable, readSlipSettings, writeSlipSettings } from '../services/capture.js';
+import { isCaptureAvailable, isWalletAutomationAvailable, readSlipSettings, writeSlipSettings } from '../services/capture.js';
+import { openWalletGuide } from '../components/wallet-guide.js';
 import { enableSlipImport, runPaymentCheck } from './home-page.js';
 
 const e = escapeHtml;
@@ -205,6 +206,7 @@ export function registerProfileRoute() {
             ${Capacitor.isNativePlatform() ? row('btn-biometric', 'lock', '#5f5e5a', 'Face ID', isBiometricEnabled() ? t('common.on') : t('common.off'), 'biometric-current') : ''}
             ${state.couple && isCaptureAvailable() ? row('btn-slip-import', 'scan-text', '#ef9f27', t('capture.profileRow'), readSlipSettings().enabled ? t('common.on') : t('common.off'), 'slip-import-current') : ''}
             ${state.couple && isCaptureAvailable() && readSlipSettings().enabled ? row('btn-slip-check', 'search', '#378add', t('capture.checkNow')) : ''}
+            ${state.couple && isWalletAutomationAvailable() ? row('btn-wallet-guide', 'credit-card', '#111111', t('wallet.row')) : ''}
             ${state.couple ? row('btn-export-csv', 'download', '#2fbfb3', t('profile.exportCsv')) : ''}
           </div>
 
@@ -410,6 +412,7 @@ export function registerProfileRoute() {
       navigate('/profile');
     });
     document.getElementById('btn-slip-check')?.addEventListener('click', () => runPaymentCheck({ force: true }));
+    document.getElementById('btn-wallet-guide')?.addEventListener('click', () => openWalletGuide());
     document.getElementById('btn-biometric')?.addEventListener('click', async () => {
       const label = document.getElementById('biometric-current');
       if (isBiometricEnabled()) {

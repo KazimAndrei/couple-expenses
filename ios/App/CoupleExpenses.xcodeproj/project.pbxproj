@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		069DF0C728166DB3F1B0B45D /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 513E410CEC3AB44B187F7DF8 /* Localizable.strings */; };
 		22AE0EB7E71CAD3D699A1FA2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3312F483F35D89F891A081A8 /* Foundation.framework */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3738FE8FFA84569E872229C6 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874473F7143A3AC44FF2BA69 /* MainViewController.swift */; };
@@ -26,6 +27,7 @@
 		A3D06382E46D6139D58FEDC6 /* WidgetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E8A83882D273585BA2CF976 /* WidgetStore.swift */; };
 		B93C117868B97FB62B23AA67 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3312F483F35D89F891A081A8 /* Foundation.framework */; };
 		BC3F49046ADCF129CC92E9AD /* CEWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A01B240FD342674C3558EDE1 /* CEWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E48D9614DFC69326332BE098 /* WalletPaymentIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BDBA20CAA68B0F5326703DE /* WalletPaymentIntent.swift */; };
 		E7D906FFC84B1C6FF411C6FD /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900ED31CBA6757F3BFD50767 /* ShareViewController.swift */; };
 		EB0FFF4F5CCFA43DD32016B1 /* SlipScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94082B32B44C8006BA6E2C7 /* SlipScannerPlugin.swift */; };
 		ED703E7D674509AE0DDEC6C0 /* VoiceInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1855859F78EBE19067481FDC /* VoiceInput.swift */; };
@@ -70,8 +72,10 @@
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		300990B95FCE98F7B78E6F37 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
 		3312F483F35D89F891A081A8 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		367CE299DCEB5ECF80A5A8B5 /* ru */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		3C377A254F6E727B6DE2E625 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		4205467B3476DE6B55221FA4 /* ShareSlip.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareSlip.entitlements; sourceTree = "<group>"; };
+		4BDBA20CAA68B0F5326703DE /* WalletPaymentIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WalletPaymentIntent.swift; sourceTree = "<group>"; };
 		4FF1CD49B3E05B35C97C88E9 /* CEWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = CEWidgets.entitlements; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* CoupleExpenses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CoupleExpenses.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,6 +89,7 @@
 		6F053BC6BB4BE04E4587771C /* CEWidgets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CEWidgets.swift; sourceTree = "<group>"; };
 		874473F7143A3AC44FF2BA69 /* MainViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		900ED31CBA6757F3BFD50767 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		91BBB3B9822AFBC06A8F1C22 /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		9E8A83882D273585BA2CF976 /* WidgetStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetStore.swift; sourceTree = "<group>"; };
@@ -183,6 +188,8 @@
 				874473F7143A3AC44FF2BA69 /* MainViewController.swift */,
 				1855859F78EBE19067481FDC /* VoiceInput.swift */,
 				75335A777CBEE044A595D73E /* InfoPlist.strings */,
+				4BDBA20CAA68B0F5326703DE /* WalletPaymentIntent.swift */,
+				513E410CEC3AB44B187F7DF8 /* Localizable.strings */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -344,6 +351,7 @@
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 				A070CF37DAFEF45467081C2A /* InfoPlist.strings in Resources */,
+				069DF0C728166DB3F1B0B45D /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -369,6 +377,7 @@
 				3738FE8FFA84569E872229C6 /* MainViewController.swift in Sources */,
 				ED703E7D674509AE0DDEC6C0 /* VoiceInput.swift in Sources */,
 				7ACBF2D0961351BAE41363AF /* WidgetStore.swift in Sources */,
+				E48D9614DFC69326332BE098 /* WalletPaymentIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -413,6 +422,15 @@
 				504EC3111FED79650016851F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		513E410CEC3AB44B187F7DF8 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				91BBB3B9822AFBC06A8F1C22 /* en */,
+				367CE299DCEB5ECF80A5A8B5 /* ru */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 		75335A777CBEE044A595D73E /* InfoPlist.strings */ = {

@@ -20,7 +20,13 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
   const sides = resolveMemberSides(members);
   const payerMembers = [sides.memberA, sides.memberB].filter(Boolean);
   const cur = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '';
-  const otherCurrency = couple?.currency && couple.currency !== 'THB';
+  // Суммы слипов — в батах, у Apple Pay валюта приходит вместе с суммой
+  const foreign = (it) => {
+    if (!couple?.currency) return false;
+    const code = it.source === 'wallet' ? it.slip.currency : 'THB';
+    return !!code && code !== couple.currency;
+  };
+  const allWallet = items.every((it) => it.source === 'wallet');
 
   // Переводу человеку — категорию, которую уже ставили этому получателю
   const pastCategoryId = (receiver) => {
@@ -45,20 +51,24 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const meta = (s) => [s.provider, s.date ? formatDate(s.date) : null, s.time].filter(Boolean).join(' · ');
+  const subtitle = () => {
+    if (allWallet) return t(items.some(foreign) ? 'capture.foundSubWalletCurrency' : 'capture.foundSubWallet', { cur: couple?.currency || '' });
+    return t(items.some(foreign) ? 'capture.foundSubCurrency' : 'capture.foundSub', { cur: couple?.currency || '' });
+  };
   backdrop.innerHTML = `
     <div class="modal-sheet has-footer">
      <div class="sheet-body">
       <div class="modal-handle"></div>
       <div class="modal-title">${t('capture.foundTitle', { n: rows.length })}</div>
-      <p class="capture-sub">${t(otherCurrency ? 'capture.foundSubCurrency' : 'capture.foundSub', { cur: couple?.currency || '' })}</p>
+      <p class="capture-sub">${subtitle()}</p>
       <div class="pay-list">
         ${rows.map((r) => `
         <div class="pay-row ${r.checked ? 'on' : ''}" data-idx="${r.idx}">
           <button type="button" class="pay-check" aria-label="${t('capture.include')}">${icon('check', 14, '#fff', 3)}</button>
-          <div class="pay-thumb" data-thumb="${r.idx}"></div>
+          <div class="pay-thumb${r.source === 'wallet' ? ' wallet' : ''}" data-thumb="${r.idx}">${r.source === 'wallet' ? icon('credit-card', 18) : ''}</div>
           <div class="pay-main">
             <div class="pay-title">${e(r.title)}</div>
-            <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${e(meta(r.slip))}</div>
+            <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${foreign(r) && r.slip.amount ? `<b class="pay-dup">${e(`${r.slip.currency} ${r.slip.amount}`)}</b> · ` : ''}${e(meta(r.slip))}</div>
           </div>
           <label class="pay-amount"><span>${e(cur)}</span><input type="number" inputmode="decimal" step="0.01" min="0" value="${r.slip.amount ?? ''}" aria-label="${t('common.amount')}"></label>
           <div class="pay-extra">

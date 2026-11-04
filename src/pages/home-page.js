@@ -12,7 +12,8 @@ import { loadAll, loadExpenses } from '../services/data-loader.js';
 import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
-import { clearInbox, collectPayments, isCaptureAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
+import { openWalletGuide } from '../components/wallet-guide.js';
+import { clearInbox, collectPayments, isCaptureAvailable, isWalletAutomationAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
 import { openPaymentsReviewSheet } from '../components/payments-review-sheet.js';
 import { showFeatureIntro } from '../components/feature-intro.js';
 import { guessCategoryId, parsePromptPayQr, slipCategoryId, slipDescription } from '../lib/slips.js';
@@ -836,7 +837,7 @@ function renderHome(app) {
           </div>
         </div>
       </div>
-      ${slipImportBannerHtml()}
+      ${slipImportBannerHtml() || walletBannerHtml()}
       <div class="hero">
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
@@ -1002,6 +1003,15 @@ function renderHome(app) {
     }, 250);
   });
   document.getElementById('btn-empty-add-expense')?.addEventListener('click', () => showAddExpenseModal());
+  document.getElementById('btn-wallet-setup')?.addEventListener('click', () => {
+    writeSlipSettings({ walletHintClosed: true });
+    document.getElementById('wallet-banner')?.remove();
+    openWalletGuide();
+  });
+  document.getElementById('btn-wallet-later')?.addEventListener('click', () => {
+    writeSlipSettings({ walletHintClosed: true });
+    document.getElementById('wallet-banner')?.remove();
+  });
   document.getElementById('btn-slip-enable')?.addEventListener('click', async () => {
     document.getElementById('slip-banner')?.remove();
     await enableSlipImport();
@@ -1279,6 +1289,24 @@ function slipImportBannerHtml() {
       <div class="capture-banner-actions">
         <button class="btn btn-primary btn-small" id="btn-slip-enable">${t('capture.enable')}</button>
         <button class="capture-banner-close" id="btn-slip-later" aria-label="${t('capture.later')}">${icon('x', 16)}</button>
+      </div>
+    </div>`;
+}
+
+// Подсказка про Apple Pay: пока автоматизация ничего не присылала и подсказку не закрыли
+function walletBannerHtml() {
+  const s = readSlipSettings();
+  if (!isWalletAutomationAvailable() || s.walletSeen || s.walletHintClosed) return '';
+  return `
+    <div class="capture-banner" id="wallet-banner">
+      <div class="capture-banner-icon">${icon('credit-card', 20, '#fff', 2.2)}</div>
+      <div class="capture-banner-text">
+        <b>${t('wallet.bannerTitle')}</b>
+        <span>${t('wallet.bannerText')}</span>
+      </div>
+      <div class="capture-banner-actions">
+        <button class="btn btn-primary btn-small" id="btn-wallet-setup">${t('wallet.setup')}</button>
+        <button class="capture-banner-close" id="btn-wallet-later" aria-label="${t('capture.later')}">${icon('x', 16)}</button>
       </div>
     </div>`;
 }

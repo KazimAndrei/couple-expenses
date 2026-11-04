@@ -2,6 +2,7 @@
 // Нативная часть — плагин Capture (ios/App/App/SlipScannerPlugin.swift), смысл — в lib/slips.js и lib/voice.js.
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { parseSlip } from '../lib/slips.js';
+import { walletItemToPayment } from '../lib/wallet-payments.js';
 import { getLang } from '../lib/i18n.js';
 
 // Один экземпляр на всё приложение: повторный registerPlugin Капаситор отклоняет с предупреждением
@@ -11,6 +12,12 @@ const SEEN_LIMIT = 400;
 
 export const isCaptureAvailable = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
+// Триггер «Транзакция» в «Командах» появился в iOS 17; версию берём из user agent (проверка нужна синхронно, при отрисовке)
+export const isWalletAutomationAvailable = () => {
+  const version = /iPhone OS (\d+)_/.exec(navigator.userAgent)?.[1];
+  return isCaptureAvailable() && Number(version) >= 17;
+};
+
 export function readSlipSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
@@ -18,11 +25,14 @@ export function readSlipSettings() {
       enabled: s.enabled ?? null,
       since: s.since || 0,
       seen: Array.isArray(s.seen) ? s.seen : [],
+      // Автоматизация Apple Pay уже присылала оплаты — подсказка о настройке больше не нужна
+      walletSeen: !!s.walletSeen,
+      walletHintClosed: !!s.walletHintClosed,
       // Найденные в Фото, но ещё не показанные (открыта форма, приложение закрыли) — не теряем
       pending: Array.isArray(s.pending) ? s.pending : [],
     };
   } catch {
-    return { enabled: null, since: 0, seen: [], pending: [] };
+    return { enabled: null, since: 0, seen: [], pending: [], walletSeen: false, walletHintClosed: false };
   }
 }
 
@@ -95,6 +105,20 @@ export async function collectPayments({ now = new Date(), scanPhotos = true } = 
     }
   } catch { /* расширения может не быть в старой сборке */ }
 
+  // Оплаты Apple Pay — от автоматизации «Команд»
+  try {
+    const { items: wallet = [] } = await withTimeout(Capture.takeWalletPayments(), 5000);
+    const done = [];
+    for (const it of wallet) {
+      const payment = walletItemToPayment(it);
+      // Добавили, но приложение закрылось до очистки входящих — второй раз не предлагаем
+      if (seen.has(payment.slip.key)) done.push(it.id);
+      else items.push(payment);
+    }
+    if (done.length) await Capture.clearWalletPayments({ ids: done }).catch(() => {});
+    if (wallet.length && !settings.walletSeen) writeSlipSettings({ walletSeen: true });
+  } catch { /* старая сборка без этого метода */ }
+
   // Прислали через «Поделиться» — показываем сразу, Фото досмотрим в следующий раз
   if (settings.enabled && !items.length) {
     const pending = settings.pending.filter((p) => !isSeen(p.assetId, p.slip?.key));
@@ -133,6 +157,8 @@ export const seenKeys = (item) => [item.slip?.key, item.assetId ? `asset:${item.
 export async function clearInbox(items) {
   const ids = items.flatMap((i) => i.inboxIds || (i.inboxId ? [i.inboxId] : []));
   if (ids.length) await Capture.clearInbox({ ids }).catch(() => {});
+  const walletIds = items.map((i) => i.walletId).filter(Boolean);
+  if (walletIds.length) await Capture.clearWalletPayments({ ids: walletIds }).catch(() => {});
 }
 
 export async function scanPaymentQr() {
