@@ -170,7 +170,7 @@ export async function getExpenses(coupleId, month) {
   const endStr = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
   const { data, error } = await supabase
     .from('expenses')
-    .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name))')
+    .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name)), expense_reactions(id, author_id, emoji, comment, created_at)')
     .eq('couple_id', coupleId)
     .gte('expense_date', startDate)
     .lt('expense_date', endStr)
@@ -187,6 +187,34 @@ export async function addExpense(expense) {
     .single();
   if (error) throw error;
   return data;
+}
+
+// ---- Реакции и реплики под тратой ----
+// Эмодзи у человека на трату одна: новая заменяет прежнюю, повтор той же — снимает
+export async function setExpenseReaction(expense, emoji) {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error: delError } = await supabase.from('expense_reactions')
+    .delete().eq('expense_id', expense.id).eq('author_id', user.id).not('emoji', 'is', null);
+  if (delError) throw delError;
+  if (!emoji) return null;
+  const { data, error } = await supabase.from('expense_reactions')
+    .insert({ expense_id: expense.id, couple_id: expense.couple_id, emoji })
+    .select('id, author_id, emoji, comment, created_at').single();
+  if (error) throw error;
+  return data;
+}
+
+export async function addExpenseComment(expense, comment) {
+  const { data, error } = await supabase.from('expense_reactions')
+    .insert({ expense_id: expense.id, couple_id: expense.couple_id, comment })
+    .select('id, author_id, emoji, comment, created_at').single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteExpenseReaction(id) {
+  const { error } = await supabase.from('expense_reactions').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // Расход «в цель»: атомарно создаёт expense + goal_contribution (RPC).
@@ -490,6 +518,11 @@ export function subscribeToExpenses(coupleId, callback) {
   return supabase.channel(`expenses:${coupleId}`)
     .on('postgres_changes', {
       event: '*', schema: 'public', table: 'expenses',
+      filter: `couple_id=eq.${coupleId}`,
+    }, debounced)
+    // Реакции партнёра показываем сразу, без перезахода на экран
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'expense_reactions',
       filter: `couple_id=eq.${coupleId}`,
     }, debounced).subscribe();
 }

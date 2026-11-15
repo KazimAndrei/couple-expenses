@@ -46,6 +46,15 @@ const RAW = [
   [2, 'c3', 'Electricity', 94.2, ALEX],
 ];
 
+// Немного жизни под тратами — для скриншотов и проверки реакций
+const REACTIONS = {
+  'Dinner at Nobu': [
+    { id: 'r1', author_id: ALEX, emoji: '❤️', created_at: `${day(24)}T19:00:00Z` },
+    { id: 'r2', author_id: ALEX, comment: 'Best date night this year', created_at: `${day(24)}T19:01:00Z` },
+  ],
+  Sneakers: [{ id: 'r3', author_id: ALEX, emoji: '🔥', created_at: `${day(14)}T10:00:00Z` }],
+};
+
 const EXPENSES = RAW.map(([d, cat, description, amount, paid_by], i) => ({
   id: `e${i}`,
   couple_id: COUPLE,
@@ -62,6 +71,7 @@ const EXPENSES = RAW.map(([d, cat, description, amount, paid_by], i) => ({
   categories: { name: catById(cat).name, icon: catById(cat).icon, color: catById(cat).color },
   profiles: { display_name: paid_by === ALEX ? 'Alex' : 'Sam' },
   goal_contributions: [],
+  expense_reactions: REACTIONS[description] || [],
 }));
 
 const MEMBERS = [
@@ -136,6 +146,13 @@ export async function addExpense(expense) {
   return row;
 }
 export async function addExpenseToGoal() { return null; }
+export async function setExpenseReaction(expense, emoji) {
+  return emoji ? { id: `r${Date.now()}`, author_id: ALEX, emoji, created_at: new Date().toISOString() } : null;
+}
+export async function addExpenseComment(expense, comment) {
+  return { id: `r${Date.now()}`, author_id: ALEX, comment, created_at: new Date().toISOString() };
+}
+export async function deleteExpenseReaction() {}
 export async function deleteExpense() {}
 export async function updateExpense(id, patch) { return { ...EXPENSES[0], ...patch }; }
 export async function getCategories() { return CATS; }

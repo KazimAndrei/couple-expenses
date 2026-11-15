@@ -13,6 +13,7 @@ import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
 import { openWalletGuide } from '../components/wallet-guide.js';
+import { mountExpenseReactions, reactionBadgesHtml } from '../components/expense-reactions.js';
 import { clearInbox, collectPayments, isCaptureAvailable, isWalletAutomationAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
 import { openPaymentsReviewSheet } from '../components/payments-review-sheet.js';
 import { showFeatureIntro } from '../components/feature-intro.js';
@@ -671,6 +672,7 @@ function showExpenseActionsModal(expense, app) {
         <div class="modal-title" style="margin:0;">${e(expense.description)}</div>
         <div class="expense-sheet-meta">${e(categoryLabel(sheetCat?.name) || t('common.other'))} · ${e(formatDate(expense.expense_date))} · ${e(sheetPayer)}${originalLabel(expense) ? ` · ${e(originalLabel(expense))}` : ''}</div>
       </div>
+      ${isSolo() || String(expense.id).startsWith('pending-') ? '' : '<div class="react-block" id="expense-reactions"></div>'}
       <div class="action-list">
         ${expense.receipt_url ? `<button class="action-row" id="btn-view-receipt">${icon('image', 20)}${t('home.viewReceipt')}</button>` : ''}
         <button class="action-row" id="btn-edit-expense">${icon('edit', 20)}${t('common.edit')}</button>
@@ -681,6 +683,8 @@ function showExpenseActionsModal(expense, app) {
   `;
   document.body.appendChild(backdrop);
   enableModalSwipe(backdrop);
+  const reactionsHost = backdrop.querySelector('#expense-reactions');
+  if (reactionsHost) mountExpenseReactions(reactionsHost, expense, { onChange: () => { if (getCurrentPath() === '/') renderHome(app); } });
 
   const openEdit = async () => {
     backdrop.remove();
@@ -977,7 +981,7 @@ function renderHome(app) {
                 <div class="tx-item">
                   ${tile.slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                   <div class="tx-info">
-                    <div class="tx-name">${e(exp.description)}</div>
+                    <div class="tx-name"><span>${e(exp.description)}</span>${solo ? '' : reactionBadgesHtml(exp)}</div>
                     <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))}${solo ? '' : ` · ${e(payerName)}`}${originalLabel(exp) ? ` · ${e(originalLabel(exp))}` : ''}</div>
                   </div>
                   <div class="tx-amount">${moneyHtml(exp.amount, exp.currency)}</div>

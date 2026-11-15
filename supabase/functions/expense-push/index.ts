@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
     return new Response("unauthorized", { status: 401 });
   }
 
-  let body: { expense_id?: string; contribution_id?: string; monthly_summary_couple_id?: string; month?: string };
+  let body: { expense_id?: string; contribution_id?: string; reaction_id?: string; monthly_summary_couple_id?: string; month?: string };
   try {
     body = await req.json();
   } catch {
@@ -235,6 +235,31 @@ Deno.serve(async (req: Request) => {
         return { title: lang === "ru" ? `Итоги: ${monthName}` : `${monthName} recap`, body: parts.join(" · ") };
       },
       { monthly_summary: monthKey },
+    );
+    return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // ---- Реакция или реплика под тратой ----
+  if (body.reaction_id) {
+    const { data: reaction } = await db
+      .from("expense_reactions")
+      .select("id, author_id, emoji, comment, couple_id, expense_id, expenses(description)")
+      .eq("id", body.reaction_id)
+      .maybeSingle();
+    if (!reaction) return new Response("reaction not found", { status: 404 });
+    const members = await coupleMembers(db, reaction.couple_id);
+    const authorName = members.find((m) => m.id === reaction.author_id)?.display_name;
+    const partnerIds = members.filter((m) => m.id !== reaction.author_id).map((m) => m.id);
+    const what = (reaction.expenses as { description?: string } | null)?.description ?? "";
+    const sent = await sendToUsers(
+      db, partnerIds,
+      (lang) => ({
+        title: `${authorName || PARTNER[lang]}${reaction.emoji ? ` ${reaction.emoji}` : ""}`,
+        body: reaction.comment
+          ? (lang === "ru" ? `«${what}»: ${reaction.comment}` : `“${what}”: ${reaction.comment}`)
+          : (lang === "ru" ? `Реакция на «${what}»` : `Reacted to “${what}”`),
+      }),
+      { expense_id: reaction.expense_id, reaction_id: reaction.id },
     );
     return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
   }
