@@ -5,7 +5,7 @@ import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
 import { CURRENCIES, catTile, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
 import { hapticSelect, hapticSuccess, hapticTap } from '../services/haptics.js';
 import { soundAdd, soundCoin, soundDelete } from '../services/sounds.js';
-import { t, categoryLabel } from '../lib/i18n.js';
+import { t, categoryLabel, getLang } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { showToast } from '../services/toast.js';
 import { loadAll, loadExpenses } from '../services/data-loader.js';
@@ -55,6 +55,14 @@ function readLastExpensePrefs() {
 function saveLastExpensePrefs(prefs) {
   localStorage.setItem(LAST_EXPENSE_PREFS_KEY, JSON.stringify(prefs));
 }
+
+// «Нояб.» (год — только если он не текущий): в шапке пары месяц короткий, чтобы имена помещались целиком
+const shortMonth = (monthStr) => {
+  const [y, m] = monthStr.split('-').map(Number);
+  const opts = { month: 'short', ...(y === new Date().getFullYear() ? {} : { year: 'numeric' }) };
+  const label = new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', opts).format(new Date(y, m - 1, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 
 // «฿110» рядом с пересчитанной суммой — что было в чеке
 const originalLabel = (exp) => (exp?.original_currency && exp.original_amount
@@ -880,6 +888,14 @@ function renderHome(app) {
   const solo = isSolo();
   const heroLabel = filterBy ? t('home.expensesOf', { name: selectedMemberLabel }) : t(solo ? 'home.spentSolo' : 'home.spentTogether');
 
+  // Пара в шапке: фото или инициал в цвете партнёра
+  const headAvatar = (m, side) => {
+    const url = m.avatar_url || (m.id === profile?.id ? profile?.avatar_url : null);
+    return url
+      ? `<img src="${url}" class="head-avatar ${side}" alt="">`
+      : `<span class="head-avatar ${side}">${e((memberDisplayLabel(m) || '?')[0])}</span>`;
+  };
+
   const payerBadge = (exp) => {
     if (solo) return '';
     if (exp.split === 'equal') return `<span class="payer-badge shared">${icon('heart', 9, '#fff', 3)}</span>`;
@@ -894,16 +910,23 @@ function renderHome(app) {
     <div class="page-enter">
       <div class="header">
         <div class="header-row">
-          <div class="header-title">${t('home.title')}</div>
+          ${solo ? `<div class="header-title">${t('home.title')}</div>` : `
+          <div class="couple-head">
+            <div class="couple-head-avatars">${[memberA, memberB].filter(Boolean).map((m, i) => headAvatar(m, i === 1 ? 'b' : '')).join('')}</div>
+            <div class="couple-head-text">
+              <div class="couple-head-names">${e([memberA, memberB].filter(Boolean).map(memberDisplayLabel).join(' & '))}</div>
+              <div class="couple-head-sub">${t('home.title')}</div>
+            </div>
+          </div>`}
           <div class="month-switch">
             <button id="prev-month" aria-label="‹">${icon('chevron-left', 16, 'currentColor', 2.4)}</button>
-            <span>${formatMonth(month)}</span>
+            <span>${solo ? formatMonth(month) : shortMonth(month)}</span>
             <button id="next-month" aria-label="›">${icon('chevron-right', 16, 'currentColor', 2.4)}</button>
           </div>
         </div>
       </div>
       ${recapBannerHtml() || slipImportBannerHtml() || walletBannerHtml()}
-      <div class="hero">
+      <div class="hero${solo ? '' : ' duo'}${couple?.cover_image ? ' has-cover' : ''}"${couple?.cover_image ? ` style="--hero-cover:url('${encodeURI(couple.cover_image)}')"` : ''}>
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
         <div class="hero-meta">${t('home.txCount', { count: spendable.length })}${total > 0 ? ` · ${t('home.perDay', { amount: formatMoney(total / Math.max(1, daysElapsed), couple?.currency) })}` : ''}</div>

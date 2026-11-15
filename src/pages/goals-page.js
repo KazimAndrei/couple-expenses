@@ -17,6 +17,45 @@ import { enableModalSwipe } from '../components/modal-swipe.js';
 
 const e = escapeHtml;
 
+// Сколько было в каждой цели при прошлом показе: выросло — кольцо дорастает на глазах и летят монеты.
+// Срабатывает и на своё пополнение, и на расход «в цель», и на вклад партнёра.
+const lastGoalAmounts = new Map();
+
+function animateGoalGrowth(app, goals) {
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  for (const g of goals) {
+    const now = Number(g.current_amount) || 0;
+    const before = lastGoalAmounts.get(g.id);
+    lastGoalAmounts.set(g.id, now);
+    if (before === undefined || now <= before || reduce) continue;
+    const card = app.querySelector(`.goal-card[data-id="${g.id}"]`);
+    const ring = card?.querySelector('.ring-fg');
+    if (!ring) continue;
+    const length = Number(ring.getAttribute('stroke-dasharray')) || 0;
+    const target = ring.getAttribute('stroke-dashoffset');
+    const fromPct = Math.min(100, pct(before, g.target_amount));
+    // Ставим кольцо в прежнее положение без перехода, затем отпускаем — CSS доведёт до нового
+    ring.style.transition = 'none';
+    ring.setAttribute('stroke-dashoffset', (length * (1 - fromPct / 100)).toFixed(2));
+    card.classList.add('growing');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ring.style.transition = '';
+      ring.setAttribute('stroke-dashoffset', target);
+    }));
+    const host = card.querySelector('.goal-ring');
+    for (let i = 0; i < 7; i += 1) {
+      const coin = document.createElement('i');
+      coin.className = 'goal-coin';
+      coin.style.setProperty('--from-x', `${90 + Math.random() * 120}px`);
+      coin.style.setProperty('--from-y', `${-70 - Math.random() * 60}px`);
+      coin.style.animationDelay = `${i * 70}ms`;
+      host.appendChild(coin);
+      setTimeout(() => coin.remove(), 1500 + i * 70);
+    }
+    setTimeout(() => card.classList.remove('growing'), 1400);
+  }
+}
+
 function showAddGoalModal() {
   const { couple } = getState();
   const backdrop = document.createElement('div');
@@ -217,6 +256,7 @@ export function registerGoalsRoute() {
       </div>
       ${renderTabBar()}
     `;
+    animateGoalGrowth(app, goals);
     document.getElementById('btn-add-goal')?.addEventListener('click', showAddGoalModal);
     document.getElementById('btn-empty-add-goal')?.addEventListener('click', showAddGoalModal);
     app.querySelectorAll('.goal-card[data-id]').forEach(card => {

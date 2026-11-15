@@ -79,7 +79,7 @@ const MEMBERS = [
   { id: SAM, display_name: 'Sam', avatar_url: null, created_at: '2026-01-02T10:05:00Z' },
 ];
 
-const COUPLE_ROW = { id: COUPLE, name: 'Alex & Sam', currency: 'USD', owner_id: ALEX, invite_code: 'LOVE24', solo: localStorage.getItem('shot_solo') === '1' };
+const COUPLE_ROW = { id: COUPLE, name: 'Alex & Sam', currency: 'USD', owner_id: ALEX, invite_code: 'LOVE24', solo: localStorage.getItem('shot_solo') === '1', cover_url: localStorage.getItem('shot_cover') ? 'cover' : null, cover_image: localStorage.getItem('shot_cover') || null };
 const NO_COUPLE = localStorage.getItem('shot_nocouple') === '1';
 const PROFILE = { id: ALEX, display_name: 'Alex', couple_id: NO_COUPLE ? null : COUPLE, avatar_url: null, couples: NO_COUPLE ? null : COUPLE_ROW };
 const USER = { id: ALEX, email: 'alex@example.com' };
@@ -170,7 +170,11 @@ export async function addGoal(g) { return { ...g, id: 'g9', current_amount: 0 };
 export async function updateGoal(id, patch) { return { ...GOALS[0], ...patch }; }
 export async function deleteGoal() {}
 export async function deleteBudget() {}
-export async function addGoalContribution() { return GOALS[0]; }
+export async function addGoalContribution(goalId, amount) {
+  const goal = GOALS.find((g) => g.id === goalId) || GOALS[0];
+  goal.current_amount = Number(goal.current_amount) + Number(amount);
+  return goal;
+}
 export async function getIncome() { return 7200; }
 export async function getIncomeEntries() {
   return [
@@ -191,6 +195,8 @@ export async function uploadReceipt() { return null; }
 export async function receiptUrl() { return null; }
 export async function avatarUrl(v) { return v || null; }
 export async function uploadAvatar() { return null; }
+export async function uploadCoupleCover() { return null; }
+export async function setCoupleCover() {}
 export function subscribeToExpenses() { return nullSub; }
 export function subscribeToGoals() { return nullSub; }
 export async function registerPush() {}

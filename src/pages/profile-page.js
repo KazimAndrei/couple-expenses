@@ -1,7 +1,7 @@
 import { route, navigate } from '../lib/router.js';
 import { getState, isSolo, setState } from '../lib/store.js';
 import { inviteHowtoHtml } from '../components/invite-howto.js';
-import { fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, signOut, supabase, uploadAvatar } from '../lib/supabase.js';
+import { fetchAllExpensesForExport, getCoupleMembers, getProfile, inviteLink, setCoupleCover, signOut, supabase, uploadAvatar, uploadCoupleCover } from '../lib/supabase.js';
 import { reencodeImage } from '../lib/image.js';
 import { applyTheme, getThemePref } from '../services/theme.js';
 import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '../services/biometric.js';
@@ -175,7 +175,7 @@ export function registerProfileRoute() {
       <div class="page-enter">
         <div class="header"><div class="header-title">${t('profile.title')}</div></div>
         <div class="profile-section">
-          <div class="couple-card">
+          <div class="couple-card${state.couple?.cover_image ? ' has-cover' : ''}"${state.couple?.cover_image ? ` style="--hero-cover:url('${encodeURI(state.couple.cover_image)}')"` : ''}>
             <div class="couple-avatars">
               <div class="avatar-me">
                 ${myAvatar}
@@ -195,6 +195,9 @@ export function registerProfileRoute() {
             ${row('btn-invite', 'share', '#e8735a', t(solo ? 'profile.addPartner' : 'profile.inviteShort'))}
             ${row('btn-copy-code', 'link', '#7f77dd', t('profile.inviteCode'), e(state.couple.invite_code))}
             ${row('btn-settings', 'users', '#378add', t('profile.coupleSettings'))}
+            ${row('btn-cover', 'image', '#d4537e', t(solo ? 'profile.coverSolo' : 'profile.cover'), state.couple.cover_url ? t('profile.coverChange') : '')}
+            ${state.couple.cover_url ? row('btn-cover-remove', 'trash-2', '#888780', t('profile.coverRemove')) : ''}
+            <input type="file" id="cover-input" accept="image/*" style="display:none;">
             ${row('btn-currency', 'coins', '#ef9f27', t('profile.currency'), `${e(CURRENCIES[state.couple.currency]?.[0] || '')} ${e(state.couple.currency)}`, 'currency-current')}
           </div>` : ''}
 
@@ -264,6 +267,31 @@ export function registerProfileRoute() {
         el.style.display = '';
       }).catch(() => { /* нет данных — строку не показываем */ });
     }
+
+    // Обложка пары: общее фото на главной карточке и в профиле у обоих
+    const saveCover = async (path) => {
+      await setCoupleCover(state.couple.id, path);
+      const refreshed = await getProfile();
+      setState({ profile: refreshed, couple: refreshed?.couples || state.couple });
+      navigate('/profile');
+    };
+    document.getElementById('btn-cover')?.addEventListener('click', () => document.getElementById('cover-input')?.click());
+    document.getElementById('cover-input')?.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        const blob = await reencodeImage(file, { maxSide: 1400, quality: 0.82 });
+        await saveCover(await uploadCoupleCover(blob, state.profile.id));
+        showToast(t('profile.coverSaved'));
+      } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
+    });
+    document.getElementById('btn-cover-remove')?.addEventListener('click', async () => {
+      try {
+        await saveCover(null);
+        showToast(t('profile.coverRemoved'));
+      } catch (err) { showToast(t('common.error', { msg: getReadableError(err) })); }
+    });
 
     document.getElementById('btn-change-avatar')?.addEventListener('click', () => {
       document.getElementById('avatar-input')?.click();

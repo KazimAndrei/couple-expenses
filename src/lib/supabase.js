@@ -110,6 +110,8 @@ export async function getProfile() {
     return null;
   }
   if (data?.avatar_url) data.avatar_url = await avatarUrl(data.avatar_url);
+  // Обложка пары лежит там же, где аватары: наружу — подписанная ссылка
+  if (data?.couples?.cover_url) data.couples.cover_image = await avatarUrl(data.couples.cover_url);
   return data;
 }
 
@@ -507,6 +509,19 @@ export async function uploadAvatar(blob, userId) {
   const { error } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
   if (error) throw error;
   return path;
+}
+
+// Обложка пары: файл в папке того, кто загрузил; имя с меткой времени, чтобы новая не бралась из кэша
+export async function uploadCoupleCover(blob, userId) {
+  const path = `${userId}/cover-${Date.now()}.jpg`;
+  const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg' });
+  if (error) throw error;
+  return path;
+}
+
+export async function setCoupleCover(coupleId, path) {
+  const { error } = await supabase.from('couples').update({ cover_url: path }).eq('id', coupleId);
+  if (error) throw error;
 }
 
 // ---- Realtime ----
