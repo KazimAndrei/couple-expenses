@@ -10,7 +10,15 @@ const num = (v) => { const n = Number.parseFloat(v); return Number.isFinite(n) ?
 export function lastWeekRange(now = new Date()) {
   const mondayOffset = (now.getDay() + 6) % 7; // пн = 0 … вс = 6
   const thisMonday = addDays(now, -mondayOffset);
-  const from = addDays(thisMonday, -7);
+  return weekRangeFrom(ymd(addDays(thisMonday, -7)));
+}
+
+// Неделя по её понедельнику (YYYY-MM-DD) — так её присылает пуш; кривая дата → null
+export function weekRangeFrom(fromStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(fromStr || ''));
+  if (!m) return null;
+  const from = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (ymd(from) !== fromStr) return null;
   return {
     from: ymd(from),
     to: ymd(addDays(from, 6)),

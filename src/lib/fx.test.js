@@ -38,6 +38,9 @@ describe('roundMoney', () => {
   });
   it('мелкая сумма не округляется в ноль', () => {
     expect(roundMoney(0.3, 'THB')).toBe(0.3);
+    expect(roundMoney(0.004, 'USD')).toBe(0.01);
+    expect(convertAmount(100, 'VND', 'USD', { USD: 1, VND: 25000 })).toBe(0.01);
+    expect(roundMoney(0, 'USD')).toBe(0);
   });
 });
 
@@ -57,6 +60,11 @@ describe('getRates', () => {
   it('без сети отдаёт старый курс с пометкой stale', async () => {
     await getRates({ now: 0, fetcher: ok(RATES) });
     expect(await getRates({ now: 13 * 3600 * 1000, fetcher: down() })).toEqual({ rates: RATES, stale: true });
+  });
+  it('кэш с меткой из будущего обновляется', async () => {
+    await getRates({ now: 10 * 3600 * 1000, fetcher: ok(RATES) });
+    const res = await getRates({ now: 0, fetcher: ok({ USD: 1, THB: 41 }) });
+    expect(res.rates.THB).toBe(41);
   });
   it('без сети и без кэша — rates: null', async () => {
     expect(await getRates({ fetcher: down() })).toEqual({ rates: null, stale: true });

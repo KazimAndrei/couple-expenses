@@ -151,7 +151,12 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
   const fit = (input) => { input.style.width = `${Math.max(2, (input.value || '0').length) + 0.6}ch`; };
   backdrop.querySelectorAll('.pay-amount input').forEach((input) => {
     fit(input);
-    input.addEventListener('input', () => fit(input));
+    input.addEventListener('input', () => {
+      fit(input);
+      // Сумму поправили руками — курс её уже не перезапишет
+      const r = rows[Number(input.closest('.pay-row')?.dataset.idx)];
+      if (r) r.touched = true;
+    });
   });
 
   // Чужую валюту пересчитываем по курсу дня; не вышло (нет сети) — остаётся сумма из чека и просьба поправить
@@ -159,7 +164,8 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
     getRates().then(({ rates }) => {
       if (!rates || !backdrop.isConnected) return;
       let converted = 0;
-      for (const r of rows.filter(foreign)) {
+      const pending = rows.filter((r) => foreign(r) && !r.touched);
+      for (const r of pending) {
         const value = convertAmount(r.slip.amount, currencyOf(r), couple.currency, rates);
         const input = backdrop.querySelector(`.pay-row[data-idx="${r.idx}"] .pay-amount input`);
         if (!value || !input) continue;
@@ -168,7 +174,8 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
         r.original = { original_amount: r.slip.amount, original_currency: currencyOf(r) };
         converted += 1;
       }
-      if (converted) backdrop.querySelector('#pay-sub').textContent = t('fx.foundSub', { cur: couple.currency });
+      // «Пересчитано» пишем, только если пересчитали все: иначе просьба поправить суммы должна остаться
+      if (converted && converted === pending.length) backdrop.querySelector('#pay-sub').textContent = t('fx.foundSub', { cur: couple.currency });
     });
   }
 

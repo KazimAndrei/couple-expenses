@@ -46,6 +46,9 @@ export function mountExpenseReactions(host, expense, { onChange } = {}) {
         <input type="text" class="form-input" maxlength="280" placeholder="${t('react.placeholder')}" autocomplete="off" aria-label="${t('react.placeholder')}">
         <button type="submit" class="icon-btn" aria-label="${t('react.send')}">${icon('send', 17)}</button>
       </form>`;
+    // Только что отправленная реплика должна быть видна, а не под сгибом
+    const thread = host.querySelector('.react-thread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
 
     host.querySelectorAll('.react-btn').forEach((btn) => {
       btn.addEventListener('click', () => run(async () => {

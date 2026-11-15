@@ -59,3 +59,6 @@ create trigger trg_expense_reaction_push
   after insert on public.expense_reactions
   for each row execute function public.notify_expense_reaction_push();
 revoke execute on function public.notify_expense_reaction_push() from public, anon, authenticated;
+
+-- Удаление реакции должно дойти до партнёра по realtime: фильтру по couple_id нужна вся старая строка
+alter table public.expense_reactions replica identity full;

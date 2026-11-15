@@ -49,3 +49,14 @@ describe('security helpers', () => {
     expect(safeColor('rgb(0,0,0)', '#123456')).toBe('#123456');
   });
 });
+
+describe('cssUrl', () => {
+  it('пускает только https и не даёт выйти из url()', async () => {
+    const { cssUrl } = await import('./utils.js');
+    expect(cssUrl('https://x.supabase.co/storage/a b.jpg?token=1')).toBe('https://x.supabase.co/storage/a%20b.jpg?token=1');
+    expect(cssUrl("https://x.test/a.jpg');display:none;--x:url('")).not.toMatch(/['();]/);
+    expect(cssUrl("data:image/png;base64,AAA');display:none")).toBe('');
+    expect(cssUrl('http://x.test/a.jpg')).toBe('');
+    expect(cssUrl(null)).toBe('');
+  });
+});

@@ -24,14 +24,16 @@ export function roundMoney(value, currency) {
   const digits = zeroDecimal.has(currency) ? 0 : 2;
   const k = 10 ** digits;
   const rounded = Math.round(value * k) / k;
-  // 0.3 бата не должно превратиться в «0» — пустую трату база не примет
-  return rounded > 0 ? rounded : Math.round(value * 100) / 100;
+  if (rounded > 0 || !(value > 0)) return rounded;
+  // 0.3 бата или 100 донгов в долларах не должны превратиться в «0» — пустую трату база не примет
+  return Math.max(0.01, Math.round(value * 100) / 100);
 }
 
 // { rates, stale }: свежие курсы, либо сохранённые (stale), либо null, если не было сети ни разу
 export async function getRates({ now = Date.now(), fetcher = fetch } = {}) {
   const cached = readCache();
-  if (cached.rates && now - cached.at < FRESH_MS) return { rates: cached.rates, stale: false };
+  // Метка из будущего (перевели часы) свежей не считается — иначе курс не обновился бы никогда
+  if (cached.rates && now >= cached.at && now - cached.at < FRESH_MS) return { rates: cached.rates, stale: false };
   try {
     const res = await fetcher('https://open.er-api.com/v6/latest/USD');
     const data = await res.json();

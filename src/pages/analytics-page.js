@@ -175,7 +175,7 @@ export function registerAnalyticsRoute() {
       const label = memberDisplayLabel(m);
       const avatarUrl = m.avatar_url || (m.id === state.profile?.id ? state.profile?.avatar_url : null);
       const avatar = avatarUrl
-        ? `<img src="${avatarUrl}" class="filter-avatar" alt="">`
+        ? `<img src="${e(avatarUrl)}" class="filter-avatar" alt="">`
         : `<div class="filter-avatar filter-avatar-initials">${e(label[0] || '')}</div>`;
       return `<button class="filter-chip ${filterBy === m.id ? 'active' : ''}" data-filter="${m.id}">${avatar} ${e(label)}</button>`;
     };

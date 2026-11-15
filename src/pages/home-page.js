@@ -2,7 +2,7 @@ import { route, navigate, getCurrentPath, pinStickyUnderHeader } from '../lib/ro
 import { getState, isSolo, setState } from '../lib/store.js';
 import { addExpense, addExpenseToGoal, addIncomeEntry, createRecurringExpense, deleteExpense, getCoupleMembers, getGoals, getIncome as fetchIncome, getIncomeEntries, subscribeToExpenses, updateExpense, uploadReceipt, receiptUrl } from '../lib/supabase.js';
 import { enqueueExpense, isNetworkError } from '../services/offline-queue.js';
-import { CURRENCIES, catTile, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
+import { CURRENCIES, catTile, cssUrl, currentMonth, escapeHtml, formatDate, formatDateTime, formatMoney, formatMonth, groupByDate, icon, moneyHtml, nextMonth, prevMonth, quickAmounts, safeColor, todayStr } from '../lib/utils.js';
 import { hapticSelect, hapticSuccess, hapticTap } from '../services/haptics.js';
 import { soundAdd, soundCoin, soundDelete } from '../services/sounds.js';
 import { t, categoryLabel, getLang } from '../lib/i18n.js';
@@ -13,7 +13,7 @@ import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
 import { openWalletGuide } from '../components/wallet-guide.js';
-import { openWeeklyRecap, recapSeenWeek } from '../components/weekly-recap.js';
+import { markRecapSeen, openWeeklyRecap, recapSeenWeek } from '../components/weekly-recap.js';
 import { shouldOfferRecap } from '../lib/weekly-recap.js';
 import { mountExpenseReactions, reactionBadgesHtml } from '../components/expense-reactions.js';
 import { clearInbox, collectPayments, isCaptureAvailable, isWalletAutomationAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
@@ -56,12 +56,12 @@ function saveLastExpensePrefs(prefs) {
   localStorage.setItem(LAST_EXPENSE_PREFS_KEY, JSON.stringify(prefs));
 }
 
-// «Нояб.» (год — только если он не текущий): в шапке пары месяц короткий, чтобы имена помещались целиком
+// «Нояб» или «Дек ’25»: в шапке пары месяц короткий, чтобы имена помещались целиком
 const shortMonth = (monthStr) => {
   const [y, m] = monthStr.split('-').map(Number);
-  const opts = { month: 'short', ...(y === new Date().getFullYear() ? {} : { year: 'numeric' }) };
-  const label = new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', opts).format(new Date(y, m - 1, 1));
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  const label = new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', { month: 'short' }).format(new Date(y, m - 1, 1)).replace('.', '');
+  const month = label.charAt(0).toUpperCase() + label.slice(1);
+  return y === new Date().getFullYear() ? month : `${month} ’${String(y).slice(2)}`;
 };
 
 // «฿110» рядом с пересчитанной суммой — что было в чеке
@@ -171,7 +171,7 @@ export async function showAddExpenseModal(prefill = {}) {
             return `
           <div class="payer-option ${defaultPayerId === m.id ? 'selected' : ''}" data-id="${m.id}">
             ${avatarUrl
-              ? `<img src="${avatarUrl}" class="payer-avatar" alt="">`
+              ? `<img src="${e(avatarUrl)}" class="payer-avatar" alt="">`
               : `<div class="payer-avatar payer-avatar-initials ${sideOf(m.id)}">${e(label[0] || '')}</div>`}<span>${e(label)}</span>
           </div>`;
           }).join('')}
@@ -210,6 +210,9 @@ export async function showAddExpenseModal(prefill = {}) {
   // Трата в чужой валюте: вводим как в чеке, в бюджет попадает сумма по курсу дня
   let entryCurrency = baseCurrency;
   let fxRates = null;
+  let fxFailed = false;
+  const symbolOf = (code) => CURRENCIES[code]?.[0] || code;
+  const rateNumber = new Intl.NumberFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', { maximumSignificantDigits: 4 });
   const fxNote = document.getElementById('fx-note');
   const convertedAmount = () => convertAmount(parseFloat(amountInput.value), entryCurrency, baseCurrency, fxRates);
   const updateFxNote = () => {
@@ -218,24 +221,28 @@ export async function showAddExpenseModal(prefill = {}) {
     if (!foreign) return;
     const converted = convertedAmount();
     const one = convertAmount(1, baseCurrency, entryCurrency, fxRates);
-    if (!fxRates) fxNote.textContent = t('fx.loading');
-    else if (one === null) fxNote.textContent = t('fx.noRate', { cur: entryCurrency });
-    else fxNote.textContent = `${converted > 0 ? `≈ ${formatMoney(converted, baseCurrency)} · ` : ''}${t('fx.rate', { base: formatMoney(1, baseCurrency), amount: formatMoney(one, entryCurrency) })}`;
+    const rate = fxRates?.[entryCurrency] > 0 && fxRates?.[baseCurrency] > 0 ? fxRates[entryCurrency] / fxRates[baseCurrency] : null;
+    if (!fxRates) fxNote.textContent = t(fxFailed ? 'fx.offline' : 'fx.loading');
+    else if (one === null || rate === null) fxNote.textContent = t('fx.noRate', { cur: entryCurrency });
+    else fxNote.textContent = `${converted > 0 ? `≈ ${formatMoney(converted, baseCurrency)} · ` : ''}${t('fx.rate', { base: `1 ${baseCurrency}`, amount: `${rateNumber.format(rate)} ${entryCurrency}` })}`;
   };
   const renderQuickAmounts = () => {
     document.getElementById('quick-amounts').innerHTML = quickAmounts(entryCurrency)
       .map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('');
   };
   const setEntryCurrency = async (code) => {
-    entryCurrency = CURRENCIES[code] ? code : baseCurrency;
-    document.getElementById('exp-currency').value = entryCurrency;
-    document.getElementById('exp-currency-symbol').textContent = CURRENCIES[entryCurrency][0];
+    // Валюта из чека может быть не из нашего списка (TWD, LKR…) — её тоже пересчитываем, а не выдаём за валюту бюджета
+    entryCurrency = /^[A-Z]{3}$/.test(code || '') ? code : baseCurrency;
+    const select = document.getElementById('exp-currency');
+    if (![...select.options].some((o) => o.value === entryCurrency)) select.add(new Option(entryCurrency, entryCurrency));
+    select.value = entryCurrency;
+    document.getElementById('exp-currency-symbol').textContent = symbolOf(entryCurrency);
     renderQuickAmounts();
     updateFxNote();
     if (entryCurrency !== baseCurrency && !fxRates) {
       const { rates } = await getRates();
       fxRates = rates;
-      if (!rates) { fxNote.textContent = t('fx.offline'); return; }
+      fxFailed = !rates;
       updateFxNote();
     }
   };
@@ -464,10 +471,10 @@ export async function showAddExpenseModal(prefill = {}) {
     if (!entered || entered <= 0) { showToast(t('common.enterAmount')); return; }
     if (!description && !goalId) { showToast(t('home.enterDescription')); return; }
     const foreign = entryCurrency !== baseCurrency;
-    if (foreign && !fxRates) fxRates = (await getRates()).rates;
+    if (foreign && !fxRates) { fxRates = (await getRates()).rates; fxFailed = !fxRates; }
     const amount = foreign ? convertedAmount() : entered;
     // Без курса не гадаем: пусть введут сумму в валюте бюджета
-    if (!amount) { showToast(t('fx.offline')); return; }
+    if (!amount) { showToast(t(fxRates ? 'fx.noRate' : 'fx.offline', { cur: entryCurrency })); return; }
     const original = foreign ? { original_amount: entered, original_currency: entryCurrency } : {};
 
     const isShared = payerEl?.dataset.id === 'shared';
@@ -857,7 +864,7 @@ function renderHome(app) {
     const label = memberDisplayLabel(m);
     const avatarUrl = m.avatar_url || (m.id === profile?.id ? profile?.avatar_url : null);
     const avatar = avatarUrl
-      ? `<img src="${avatarUrl}" class="filter-avatar" alt="">`
+      ? `<img src="${e(avatarUrl)}" class="filter-avatar" alt="">`
       : `<div class="filter-avatar filter-avatar-initials">${e(label[0] || '')}</div>`;
     return `<button class="filter-chip ${filterBy === m.id ? 'active' : ''}" data-filter="${m.id}">${avatar} ${e(label)}</button>`;
   };
@@ -892,7 +899,7 @@ function renderHome(app) {
   const headAvatar = (m, side) => {
     const url = m.avatar_url || (m.id === profile?.id ? profile?.avatar_url : null);
     return url
-      ? `<img src="${url}" class="head-avatar ${side}" alt="">`
+      ? `<img src="${e(url)}" class="head-avatar ${side}" alt="">`
       : `<span class="head-avatar ${side}">${e((memberDisplayLabel(m) || '?')[0])}</span>`;
   };
 
@@ -903,7 +910,7 @@ function renderHome(app) {
     const member = side === 'b' ? memberB : memberA;
     const url = member?.avatar_url || (member?.id === profile?.id ? profile?.avatar_url : null);
     const label = resolvePayerLabel(exp, sides);
-    return `<span class="payer-badge ${side === 'b' ? 'b' : ''}" title="${e(label)}">${url ? `<img src="${url}" alt="">` : e((label || '?')[0])}</span>`;
+    return `<span class="payer-badge ${side === 'b' ? 'b' : ''}" title="${e(label)}">${url ? `<img src="${e(url)}" alt="">` : e((label || '?')[0])}</span>`;
   };
 
   app.innerHTML = `
@@ -926,7 +933,7 @@ function renderHome(app) {
         </div>
       </div>
       ${recapBannerHtml() || slipImportBannerHtml() || walletBannerHtml()}
-      <div class="hero${solo ? '' : ' duo'}${couple?.cover_image ? ' has-cover' : ''}"${couple?.cover_image ? ` style="--hero-cover:url('${encodeURI(couple.cover_image)}')"` : ''}>
+      <div class="hero${solo ? '' : ' duo'}${cssUrl(couple?.cover_image) ? ' has-cover' : ''}"${cssUrl(couple?.cover_image) ? ` style="--hero-cover:url('${cssUrl(couple.cover_image)}')"` : ''}>
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
         <div class="hero-meta">${t('home.txCount', { count: spendable.length })}${total > 0 ? ` · ${t('home.perDay', { amount: formatMoney(total / Math.max(1, daysElapsed), couple?.currency) })}` : ''}</div>
@@ -991,7 +998,7 @@ function renderHome(app) {
                   <div class="tx-item">
                     ${catTile('target', '#1d9e75', 42).slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                     <div class="tx-info">
-                      <div class="tx-name">${t('home.savedToGoal', { name: e(goalName) })}</div>
+                      <div class="tx-name"><span>${t('home.savedToGoal', { name: e(goalName) })}</span>${solo ? '' : reactionBadgesHtml(exp)}</div>
                       <div class="tx-cat">${t('home.savingLabel')}${solo ? '' : ` · ${e(payerName)}`}</div>
                     </div>
                     <div class="tx-amount saving">+${moneyHtml(exp.amount, exp.currency)}</div>
@@ -1094,6 +1101,10 @@ function renderHome(app) {
   document.getElementById('btn-recap-open')?.addEventListener('click', () => {
     document.getElementById('recap-banner')?.remove();
     openWeeklyRecap();
+  });
+  document.getElementById('btn-recap-later')?.addEventListener('click', () => {
+    markRecapSeen();
+    renderHome(app);
   });
   document.getElementById('btn-wallet-setup')?.addEventListener('click', () => {
     writeSlipSettings({ walletHintClosed: true });
@@ -1400,6 +1411,7 @@ function recapBannerHtml() {
       </div>
       <div class="capture-banner-actions">
         <button class="btn btn-primary btn-small" id="btn-recap-open">${t('recap.open')}</button>
+        <button class="capture-banner-close" id="btn-recap-later" aria-label="${t('capture.later')}">${icon('x', 16)}</button>
       </div>
     </div>`;
 }
@@ -1428,9 +1440,10 @@ export function registerHomeRoute() {
     if (document.visibilityState === 'visible') runPaymentCheck({ retry: true });
   });
   // Пуш «Итог недели»: ждём, пока приложение загрузит пару, и показываем историю
-  window.addEventListener('ce:weekly-recap', () => {
+  window.addEventListener('ce:weekly-recap', (ev) => {
     const tryOpen = (left) => {
-      if (getState().couple) openWeeklyRecap();
+      // Неделю берём из самого пуша: «прошлая неделя» по часам телефона в Америке ещё не та
+      if (getState().couple) openWeeklyRecap({ from: ev.detail?.from });
       else if (left > 0) setTimeout(() => tryOpen(left - 1), 500);
     };
     tryOpen(20);

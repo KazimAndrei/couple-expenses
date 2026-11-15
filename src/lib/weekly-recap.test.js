@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRecap, lastWeekRange, shouldOfferRecap } from './weekly-recap.js';
+import { buildRecap, lastWeekRange, shouldOfferRecap, weekRangeFrom } from './weekly-recap.js';
 
 // 2026-11-18 — среда; прошлая неделя 9–15 ноября, позапрошлая 2–8
 const WED = new Date(2026, 10, 18, 12);
@@ -18,6 +18,17 @@ describe('lastWeekRange', () => {
   });
   it('неделя через границу года', () => {
     expect(lastWeekRange(new Date(2027, 0, 6))).toMatchObject({ from: '2026-12-28', to: '2027-01-03' });
+  });
+});
+
+describe('weekRangeFrom', () => {
+  it('неделя из пуша — по её понедельнику', () => {
+    expect(weekRangeFrom('2026-11-09')).toEqual(RANGE);
+  });
+  it('мусор вместо даты — null', () => {
+    expect(weekRangeFrom('2026-13-40')).toBeNull();
+    expect(weekRangeFrom(undefined)).toBeNull();
+    expect(weekRangeFrom('true')).toBeNull();
   });
 });
 

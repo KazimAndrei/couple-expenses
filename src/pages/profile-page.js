@@ -8,7 +8,7 @@ import { isBiometricEnabled, setBiometricEnabled, unlockWithBiometrics } from '.
 import { coupleHasAccess } from '../services/purchases.js';
 import { clearSessionState } from '../services/session-cleanup.js';
 import { Capacitor } from '@capacitor/core';
-import { CURRENCIES, catTile, currencyName, escapeHtml, icon } from '../lib/utils.js';
+import { CURRENCIES, catTile, currencyName, escapeHtml, icon, cssUrl } from '../lib/utils.js';
 import { memberDisplayLabel, resolveMemberSides } from '../lib/member-filters.js';
 import { LANG_LABELS, categoryLabel, getLang, setLang, t } from '../lib/i18n.js';
 import { renderTabBar } from '../components/tab-bar.js';
@@ -175,7 +175,7 @@ export function registerProfileRoute() {
       <div class="page-enter">
         <div class="header"><div class="header-title">${t('profile.title')}</div></div>
         <div class="profile-section">
-          <div class="couple-card${state.couple?.cover_image ? ' has-cover' : ''}"${state.couple?.cover_image ? ` style="--hero-cover:url('${encodeURI(state.couple.cover_image)}')"` : ''}>
+          <div class="couple-card${cssUrl(state.couple?.cover_image) ? ' has-cover' : ''}"${cssUrl(state.couple?.cover_image) ? ` style="--hero-cover:url('${cssUrl(state.couple.cover_image)}')"` : ''}>
             <div class="couple-avatars">
               <div class="avatar-me">
                 ${myAvatar}

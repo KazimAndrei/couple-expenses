@@ -56,7 +56,7 @@ export async function initNativePush() {
 
     // Нажали на пуш «Итог недели» — открываем сам итог
     PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
-      if (notification?.data?.weekly_recap) window.dispatchEvent(new CustomEvent('ce:weekly-recap'));
+      if (notification?.data?.weekly_recap) window.dispatchEvent(new CustomEvent('ce:weekly-recap', { detail: { from: notification.data.weekly_recap } }));
     });
 
     dbg('calling register()');

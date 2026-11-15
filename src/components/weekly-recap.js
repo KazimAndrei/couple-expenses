@@ -2,7 +2,7 @@
 // Цифры считает lib/weekly-recap.js; здесь — показ, листание и отрисовка картинки на canvas.
 import { getState, isSolo } from '../lib/store.js';
 import { getExpensesInRange } from '../lib/supabase.js';
-import { buildRecap, lastWeekRange } from '../lib/weekly-recap.js';
+import { buildRecap, lastWeekRange, weekRangeFrom } from '../lib/weekly-recap.js';
 import { catTile, escapeHtml, formatMoney, icon, moneyHtml } from '../lib/utils.js';
 import { categoryLabel, getLang, t } from '../lib/i18n.js';
 import { expenseJoinedProfileName, memberDisplayLabel, resolveMemberSides, resolvePayerSide } from '../lib/member-filters.js';
@@ -16,6 +16,18 @@ const SLIDE_MS = 6000;
 
 export const recapSeenWeek = () => { try { return localStorage.getItem(SEEN_KEY); } catch { return null; } };
 const markSeen = (from) => { try { localStorage.setItem(SEEN_KEY, from); } catch { /* не критично */ } };
+export const markRecapSeen = (now = new Date()) => markSeen(lastWeekRange(now).from);
+
+// «1 трата», «3 траты», «5 трат» / «1 expense», «2 expenses»
+const countLabel = (n) => {
+  if (getLang() === 'en') return t(n === 1 ? 'recap.countOne' : 'recap.countMany', { count: n });
+  const d = n % 10;
+  const dd = n % 100;
+  const key = d === 1 && dd !== 11 ? 'recap.countOne' : (d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'recap.countFew' : 'recap.countMany');
+  return t(key, { count: n });
+};
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+let opening = false;
 
 const dayMonth = (ymd) => {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -26,16 +38,21 @@ const weekday = (ymd) => {
   return new Intl.DateTimeFormat(getLang() === 'en' ? 'en-US' : 'ru-RU', { weekday: 'long' }).format(new Date(y, m - 1, d));
 };
 
-export async function openWeeklyRecap({ now = new Date() } = {}) {
+// from — понедельник недели из пуша; без него берём прошлую неделю по часам телефона
+export async function openWeeklyRecap({ now = new Date(), from } = {}) {
   const { couple, members } = getState();
-  if (!couple) return;
-  const range = lastWeekRange(now);
+  // Двойное нажатие или пуш поверх открытого итога не должны класть второй слой
+  if (!couple || opening || document.querySelector('.recap-layer')) return;
+  const range = weekRangeFrom(from) || lastWeekRange(now);
   let expenses;
+  opening = true;
   try {
     expenses = await getExpensesInRange(couple.id, range.prevFrom, range.to);
   } catch (err) {
     showToast(t('common.error', { msg: getReadableError(err) }));
     return;
+  } finally {
+    opening = false;
   }
   const sides = resolveMemberSides(members);
   const solo = isSolo();
@@ -51,7 +68,8 @@ export async function openWeeklyRecap({ now = new Date() } = {}) {
   const nameA = sides.memberA ? memberDisplayLabel(sides.memberA) : '';
   const nameB = sides.memberB ? memberDisplayLabel(sides.memberB) : '';
   const dates = `${dayMonth(recap.from)} – ${dayMonth(recap.to)}`;
-  const delta = recap.deltaPct === null ? ''
+  const onlySavings = recap.count === 0;
+  const delta = !recap.deltaPct ? ''
     : `<div class="recap-pill ${recap.deltaPct > 0 ? 'up' : 'down'}">${icon(recap.deltaPct > 0 ? 'trending-up' : 'trending-down', 15, 'currentColor', 2.4)}${t(recap.deltaPct > 0 ? 'recap.more' : 'recap.less', { pct: Math.abs(recap.deltaPct) })}</div>`;
   const top = recap.categories.slice(0, 4);
   const splitSum = recap.split.a + recap.split.b + recap.split.shared;
@@ -60,7 +78,7 @@ export async function openWeeklyRecap({ now = new Date() } = {}) {
     `<div class="recap-kicker">${t(solo ? 'recap.titleSolo' : 'recap.title')}</div>
      <div class="recap-dates">${e(dates)}</div>
      <div class="recap-total">${moneyHtml(recap.total, cur)}</div>
-     <div class="recap-sub">${t('recap.count', { count: recap.count })}</div>
+     <div class="recap-sub">${countLabel(recap.count)}</div>
      ${delta}`,
     `<div class="recap-kicker">${t('recap.whereTitle')}</div>
      <div class="recap-cats">
@@ -88,13 +106,15 @@ export async function openWeeklyRecap({ now = new Date() } = {}) {
        </div>
      </div>` : ''}
      ${recap.biggest ? `<div class="recap-card"><span>${t('recap.biggest')}</span><b>${e(recap.biggest.description)}</b><em>${formatMoney(recap.biggest.amount, cur)}</em></div>` : ''}
-     ${recap.busiestDay ? `<div class="recap-card"><span>${t('recap.busiest')}</span><b>${e(weekday(recap.busiestDay.date))}</b><em>${formatMoney(recap.busiestDay.amount, cur)}</em></div>` : ''}`,
+     ${recap.busiestDay ? `<div class="recap-card"><span>${t('recap.busiest')}</span><b>${e(capitalize(weekday(recap.busiestDay.date)))}</b><em>${formatMoney(recap.busiestDay.amount, cur)}</em></div>` : ''}`,
     `<div class="recap-kicker">${t(recap.saved > 0 ? 'recap.savedTitle' : 'recap.doneTitle')}</div>
-     ${recap.saved > 0 ? `<div class="recap-total saved">+${moneyHtml(recap.saved, cur)}</div><div class="recap-sub">${t('recap.savedSub')}</div>` : `<div class="recap-sub">${t('recap.doneSub')}</div>`}
-     <canvas class="recap-preview" id="recap-canvas" width="1080" height="1350"></canvas>
+     ${recap.saved > 0 ? `<div class="recap-total saved">+${moneyHtml(recap.saved, cur)}</div><div class="recap-sub">${t('recap.savedSub')}</div>` : `<div class="recap-sub">${t(solo ? 'recap.doneSubSolo' : 'recap.doneSub')}</div>`}
+     ${onlySavings ? '' : `<canvas class="recap-preview" id="recap-canvas" width="1080" height="1350"></canvas>
      <label class="recap-toggle"><input type="checkbox" id="recap-hide" checked><span>${t('recap.hideAmounts')}</span></label>
-     <button type="button" class="btn recap-share" id="recap-share">${icon('share', 18, 'currentColor', 2.2)}${t('recap.share')}</button>`,
+     <button type="button" class="btn recap-share" id="recap-share">${icon('share', 18, 'currentColor', 2.2)}${t('recap.share')}</button>`}`,
   ];
+  // Неделя, где только откладывали: карточки про траты были бы пустыми
+  if (onlySavings) slides.splice(0, 3);
 
   const layer = document.createElement('div');
   layer.className = 'recap-layer';
@@ -113,6 +133,12 @@ export async function openWeeklyRecap({ now = new Date() } = {}) {
     index = Math.max(0, next);
     clearTimeout(timer);
     layer.querySelectorAll('.recap-slide').forEach((s, i) => { s.hidden = i !== index; });
+    // Крупная сумма (миллионы донгов, рупий) ужимается по ширине карточки, а не обрезается
+    layer.querySelectorAll('.recap-slide:not([hidden]) .recap-total').forEach((el) => {
+      el.style.fontSize = '';
+      const size = parseFloat(getComputedStyle(el).fontSize);
+      if (el.scrollWidth > el.clientWidth) el.style.fontSize = `${Math.max(26, Math.floor(size * el.clientWidth / el.scrollWidth))}px`;
+    });
     layer.querySelectorAll('.recap-progress i').forEach((bar, i) => {
       bar.className = i < index ? 'done' : (i === index ? 'active' : '');
     });
@@ -131,11 +157,11 @@ export async function openWeeklyRecap({ now = new Date() } = {}) {
   const canvas = layer.querySelector('#recap-canvas');
   const hide = layer.querySelector('#recap-hide');
   const paint = () => drawShareCard(canvas, recap, { cur, dates, solo, hideAmounts: hide.checked });
-  hide.addEventListener('change', paint);
+  hide?.addEventListener('change', paint);
   // Шрифт приложения может догружаться — картинку рисуем, когда он готов
-  (document.fonts?.ready || Promise.resolve()).then(paint);
+  if (canvas) (document.fonts?.ready || Promise.resolve()).then(paint);
 
-  layer.querySelector('#recap-share').addEventListener('click', async () => {
+  layer.querySelector('#recap-share')?.addEventListener('click', async () => {
     try {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       const file = new File([blob], 'week.png', { type: 'image/png' });
@@ -183,12 +209,12 @@ export function drawShareCard(canvas, recap, { cur, dates, solo, hideAmounts }) 
 
   ctx.fillStyle = '#fff';
   ctx.font = font(700, 150);
-  const headline = hideAmounts ? t('recap.count', { count: recap.count }) : formatMoney(recap.total, cur);
+  const headline = hideAmounts ? countLabel(recap.count) : formatMoney(recap.total, cur);
   // Длинная строка ужимается, чтобы не вылезти за край
   const fit = Math.min(1, (W - 180) / ctx.measureText(headline).width);
   ctx.font = font(700, Math.floor(150 * fit));
   ctx.fillText(headline, 90, 440);
-  if (recap.deltaPct !== null) {
+  if (recap.deltaPct) {
     ctx.font = font(600, 40);
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.fillText(t(recap.deltaPct > 0 ? 'recap.more' : 'recap.less', { pct: Math.abs(recap.deltaPct) }), 90, 520);
@@ -202,8 +228,12 @@ export function drawShareCard(canvas, recap, { cur, dates, solo, hideAmounts }) 
     roundRect(ctx, 90, y, Math.max(70, (W - 180) * c.share), 130, 34); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.font = font(600, 46);
-    ctx.fillText(categoryLabel(c.name) || t('common.other'), 130, y + 82);
     const right = hideAmounts ? `${Math.round(c.share * 100)}%` : formatMoney(c.amount, cur);
+    // Длинное название категории обрезаем многоточием, чтобы оно не наехало на сумму справа
+    const room = W - 260 - ctx.measureText(right).width - 40;
+    let name = categoryLabel(c.name) || t('common.other');
+    while (name.length > 1 && ctx.measureText(name).width > room) name = `${name.slice(0, -2).trimEnd()}…`;
+    ctx.fillText(name, 130, y + 82);
     ctx.textAlign = 'right';
     ctx.fillText(right, W - 130, y + 82);
     ctx.textAlign = 'left';

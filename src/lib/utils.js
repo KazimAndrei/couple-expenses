@@ -204,6 +204,13 @@ export function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+// Ссылка для url() в инлайновом стиле. Адрес приходит из базы и мог быть вписан вручную,
+// поэтому пускаем только https и кодируем всё, чем можно выйти из url('…').
+export function cssUrl(value) {
+  if (typeof value !== 'string' || !/^https:\/\//i.test(value)) return '';
+  return encodeURI(value).replace(/['()\\;]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 export function safeColor(value, fallback = '#888780') {
   return /^#[0-9a-fA-F]{3,8}$/.test(value || '') ? value : fallback;
 }

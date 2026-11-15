@@ -256,8 +256,8 @@ Deno.serve(async (req: Request) => {
     const sent = await sendToUsers(
       db, members.map((m) => m.id),
       (lang) => lang === "ru"
-        ? { title: "Итог недели готов ✨", body: `Потрачено ${formatAmount(spent, couple.currency, lang)} · ${spends.length} трат. Откройте — посмотрите вместе` }
-        : { title: "Your weekly recap is ready ✨", body: `${formatAmount(spent, couple.currency, lang)} spent · ${spends.length} expenses. Open it and look together` },
+        ? { title: "Итог недели готов ✨", body: `Потрачено ${formatAmount(spent, couple.currency, lang)} за неделю. Откройте — посмотрите вместе` }
+        : { title: "Your weekly recap is ready ✨", body: `${formatAmount(spent, couple.currency, lang)} spent this week. Open it and look together` },
       { weekly_recap: body.from },
     );
     return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
