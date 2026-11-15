@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
     return new Response("unauthorized", { status: 401 });
   }
 
-  let body: { expense_id?: string; contribution_id?: string; reaction_id?: string; monthly_summary_couple_id?: string; month?: string };
+  let body: { expense_id?: string; contribution_id?: string; reaction_id?: string; monthly_summary_couple_id?: string; month?: string; weekly_recap_couple_id?: string; from?: string; to?: string };
   try {
     body = await req.json();
   } catch {
@@ -235,6 +235,30 @@ Deno.serve(async (req: Request) => {
         return { title: lang === "ru" ? `Итоги: ${monthName}` : `${monthName} recap`, body: parts.join(" · ") };
       },
       { monthly_summary: monthKey },
+    );
+    return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // ---- Итог недели (pg_cron, по понедельникам) ----
+  if (body.weekly_recap_couple_id && body.from && body.to) {
+    const coupleId = body.weekly_recap_couple_id;
+    const { data: couple } = await db.from("couples").select("currency").eq("id", coupleId).maybeSingle();
+    if (!couple) return new Response("couple not found", { status: 404 });
+    const { data: rows } = await db.from("expenses")
+      .select("amount, goal_contributions(goal_id)")
+      .eq("couple_id", coupleId)
+      .gte("expense_date", body.from)
+      .lte("expense_date", body.to);
+    const spends = (rows ?? []).filter((r) => !(r.goal_contributions as unknown[] | null)?.length);
+    const spent = spends.reduce((s, r) => s + Number(r.amount), 0);
+    if (!spends.length) return new Response("nothing to report", { status: 200 });
+    const members = await coupleMembers(db, coupleId);
+    const sent = await sendToUsers(
+      db, members.map((m) => m.id),
+      (lang) => lang === "ru"
+        ? { title: "Итог недели готов ✨", body: `Потрачено ${formatAmount(spent, couple.currency, lang)} · ${spends.length} трат. Откройте — посмотрите вместе` }
+        : { title: "Your weekly recap is ready ✨", body: `${formatAmount(spent, couple.currency, lang)} spent · ${spends.length} expenses. Open it and look together` },
+      { weekly_recap: body.from },
     );
     return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
   }

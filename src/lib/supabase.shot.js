@@ -134,6 +134,7 @@ export async function createCouple() { return COUPLE_ROW; }
 export async function joinCouple() { return COUPLE_ROW; }
 export async function updateDisplayName() {}
 export async function getExpenses() { return EXPENSES; }
+export async function getExpensesInRange(coupleId, from, to) { return EXPENSES.filter((x) => x.expense_date >= from && x.expense_date <= to); }
 export async function addExpense(expense) {
   const cat = catById(expense.category_id) || CATS[0];
   const row = {

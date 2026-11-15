@@ -180,6 +180,18 @@ export async function getExpenses(coupleId, month) {
   return data || [];
 }
 
+// Траты за произвольный отрезок (итог недели может захватывать два месяца)
+export async function getExpensesInRange(coupleId, from, to) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name)), expense_reactions(id)')
+    .eq('couple_id', coupleId)
+    .gte('expense_date', from)
+    .lte('expense_date', to);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function addExpense(expense) {
   const { data, error } = await supabase
     .from('expenses').insert(expense)

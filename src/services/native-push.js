@@ -54,6 +54,11 @@ export async function initNativePush() {
       diagError('push registration failed', err);
     });
 
+    // Нажали на пуш «Итог недели» — открываем сам итог
+    PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
+      if (notification?.data?.weekly_recap) window.dispatchEvent(new CustomEvent('ce:weekly-recap'));
+    });
+
     dbg('calling register()');
     await PushNotifications.register();
   } catch (err) {

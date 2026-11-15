@@ -5,6 +5,7 @@ import { PARTNER_COLORS, catTile, currentMonth, escapeHtml, formatDateTime, form
 import { t, categoryLabel } from '../lib/i18n.js';
 import { moneyFlow } from '../lib/money-flow.js';
 import { renderTabBar } from '../components/tab-bar.js';
+import { openWeeklyRecap } from '../components/weekly-recap.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { soundDelete } from '../services/sounds.js';
@@ -184,7 +185,8 @@ export function registerAnalyticsRoute() {
     }
     app.innerHTML = `
       <div class="page-enter">
-        <div class="header"><div><div class="header-title">${t('analytics.title')}</div><div class="header-sub">${formatMonth(month)}</div></div></div>
+        <div class="header"><div class="header-row"><div><div class="header-title">${t('analytics.title')}</div><div class="header-sub">${formatMonth(month)}</div></div>
+          <button class="recap-chip" id="btn-week-recap">${icon('sparkles', 15, 'currentColor', 2.2)}${t('recap.chip')}</button></div></div>
         ${isSolo() ? '' : `<div class="filter-sticky">
           <div class="filter-bar" style="padding: 8px 16px 12px;">
             <button class="filter-chip ${!filterBy ? 'active' : ''}" data-filter="all">${t('home.all')}</button>
@@ -323,6 +325,7 @@ export function registerAnalyticsRoute() {
       </div>
       ${renderTabBar()}
     `;
+    document.getElementById('btn-week-recap')?.addEventListener('click', () => openWeeklyRecap());
     app.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (chip.dataset.disabled === 'true') {

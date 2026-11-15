@@ -13,6 +13,8 @@ import { getReadableError } from '../services/errors.js';
 import { enableModalSwipe } from '../components/modal-swipe.js';
 import { openCategorySheet, attachLongPress } from '../components/category-sheet.js';
 import { openWalletGuide } from '../components/wallet-guide.js';
+import { openWeeklyRecap, recapSeenWeek } from '../components/weekly-recap.js';
+import { shouldOfferRecap } from '../lib/weekly-recap.js';
 import { mountExpenseReactions, reactionBadgesHtml } from '../components/expense-reactions.js';
 import { clearInbox, collectPayments, isCaptureAvailable, isWalletAutomationAvailable, listenForExpense, markSeen, photoAccess, readSlipSettings, recognizeFile, scanPaymentQr, seenKeys, writeSlipSettings } from '../services/capture.js';
 import { openPaymentsReviewSheet } from '../components/payments-review-sheet.js';
@@ -900,7 +902,7 @@ function renderHome(app) {
           </div>
         </div>
       </div>
-      ${slipImportBannerHtml() || walletBannerHtml()}
+      ${recapBannerHtml() || slipImportBannerHtml() || walletBannerHtml()}
       <div class="hero">
         <div class="hero-label">${e(heroLabel)}</div>
         <div class="hero-total" id="hero-total" data-value="${total}">${moneyHtml(total, couple?.currency)}</div>
@@ -1066,6 +1068,10 @@ function renderHome(app) {
     }, 250);
   });
   document.getElementById('btn-empty-add-expense')?.addEventListener('click', () => showAddExpenseModal());
+  document.getElementById('btn-recap-open')?.addEventListener('click', () => {
+    document.getElementById('recap-banner')?.remove();
+    openWeeklyRecap();
+  });
   document.getElementById('btn-wallet-setup')?.addEventListener('click', () => {
     writeSlipSettings({ walletHintClosed: true });
     document.getElementById('wallet-banner')?.remove();
@@ -1359,6 +1365,22 @@ function slipImportBannerHtml() {
     </div>`;
 }
 
+// В начале недели зовём посмотреть итог прошедшей — один раз
+function recapBannerHtml() {
+  if (!shouldOfferRecap(new Date(), recapSeenWeek())) return '';
+  return `
+    <div class="capture-banner recap-banner" id="recap-banner">
+      <div class="capture-banner-icon">${icon('sparkles', 20, '#fff', 2.2)}</div>
+      <div class="capture-banner-text">
+        <b>${t('recap.bannerTitle')}</b>
+        <span>${t(isSolo() ? 'recap.bannerTextSolo' : 'recap.bannerText')}</span>
+      </div>
+      <div class="capture-banner-actions">
+        <button class="btn btn-primary btn-small" id="btn-recap-open">${t('recap.open')}</button>
+      </div>
+    </div>`;
+}
+
 // Подсказка про Apple Pay: пока автоматизация ничего не присылала и подсказку не закрыли
 function walletBannerHtml() {
   const s = readSlipSettings();
@@ -1381,6 +1403,14 @@ export function registerHomeRoute() {
   document.addEventListener('visibilitychange', () => {
     // retry: если открыта форма — проверим ещё раз, когда её закроют (иначе присланный слип ждёт до следующего возврата)
     if (document.visibilityState === 'visible') runPaymentCheck({ retry: true });
+  });
+  // Пуш «Итог недели»: ждём, пока приложение загрузит пару, и показываем историю
+  window.addEventListener('ce:weekly-recap', () => {
+    const tryOpen = (left) => {
+      if (getState().couple) openWeeklyRecap();
+      else if (left > 0) setTimeout(() => tryOpen(left - 1), 500);
+    };
+    tryOpen(20);
   });
   // «+» в таб-баре шлёт событие — лист расхода открывается с любого экрана
   window.addEventListener('ce:add-expense', (ev) => {
