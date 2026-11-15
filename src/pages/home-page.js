@@ -19,6 +19,7 @@ import { showFeatureIntro } from '../components/feature-intro.js';
 import { guessCategoryId, parsePromptPayQr, slipCategoryId, slipDescription } from '../lib/slips.js';
 import { parseVoiceExpense } from '../lib/voice.js';
 import { moneyFlow } from '../lib/money-flow.js';
+import { convertAmount, getRates } from '../lib/fx.js';
 import {
   MISSING_PARTNER_ID,
   expenseJoinedProfileName,
@@ -51,6 +52,10 @@ function readLastExpensePrefs() {
 function saveLastExpensePrefs(prefs) {
   localStorage.setItem(LAST_EXPENSE_PREFS_KEY, JSON.stringify(prefs));
 }
+
+// «฿110» рядом с пересчитанной суммой — что было в чеке
+const originalLabel = (exp) => (exp?.original_currency && exp.original_amount
+  ? formatMoney(exp.original_amount, exp.original_currency) : '');
 
 function applyAdvancedFilters(expenses, filters) {
   const query = (filters.searchQuery || '').trim().toLowerCase();
@@ -88,7 +93,8 @@ export async function showAddExpenseModal(prefill = {}) {
   const capture = isCaptureAvailable();
   const defaultPayerId = lastPrefs.payerId === 'shared' ? 'shared' : (payerMembers.some((m) => m.id === lastPrefs.payerId) ? lastPrefs.payerId : 'shared');
 
-  const currSymbol = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '$';
+  const baseCurrency = couple?.currency || 'USD';
+  const currSymbol = CURRENCIES[baseCurrency]?.[0] || baseCurrency;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.onclick = (event) => { if (event.target === backdrop) backdrop.remove(); };
@@ -106,12 +112,15 @@ export async function showAddExpenseModal(prefill = {}) {
         <input type="file" id="scan-input" accept="image/*" style="display:none;">
       </div>` : ''}
       <label class="amount-hero" for="exp-amount">
-        <span class="amount-currency">${e(currSymbol)}</span>
+        <span class="amount-currency"><span id="exp-currency-symbol">${e(currSymbol)}</span>${icon('chevron-down', 14, 'currentColor', 2.6)}
+          <select id="exp-currency" aria-label="${t('profile.currency')}">
+            ${Object.keys(CURRENCIES).map((code) => `<option value="${code}" ${code === baseCurrency ? 'selected' : ''}>${code} · ${e(CURRENCIES[code][0])}</option>`).join('')}
+          </select>
+        </span>
         <input type="number" id="exp-amount" placeholder="0" inputmode="decimal" autocomplete="off" min="0" step="0.01" aria-label="${t('common.amount')}">
       </label>
-      <div class="quick-amounts">
-        ${quickAmounts(couple?.currency).map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('')}
-      </div>
+      <div class="fx-note" id="fx-note" hidden></div>
+      <div class="quick-amounts" id="quick-amounts"></div>
       <div class="form-group">
         <input type="text" class="form-input" id="exp-desc" placeholder="${t('home.descPlaceholder')}" autocomplete="off" aria-label="${t('home.description')}">
       </div>
@@ -187,14 +196,51 @@ export async function showAddExpenseModal(prefill = {}) {
   amountInput.addEventListener('input', fitAmount);
   fitAmount();
 
-  backdrop.querySelectorAll('.quick-amount').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const add = Number(btn.dataset.add || 0);
-      const current = parseFloat(amountInput?.value || '0') || 0;
-      amountInput.value = String(Math.round((current + add) * 100) / 100);
-      fitAmount();
-      hapticTap();
-    });
+  // Трата в чужой валюте: вводим как в чеке, в бюджет попадает сумма по курсу дня
+  let entryCurrency = baseCurrency;
+  let fxRates = null;
+  const fxNote = document.getElementById('fx-note');
+  const convertedAmount = () => convertAmount(parseFloat(amountInput.value), entryCurrency, baseCurrency, fxRates);
+  const updateFxNote = () => {
+    const foreign = entryCurrency !== baseCurrency;
+    fxNote.hidden = !foreign;
+    if (!foreign) return;
+    const converted = convertedAmount();
+    const one = convertAmount(1, baseCurrency, entryCurrency, fxRates);
+    if (!fxRates) fxNote.textContent = t('fx.loading');
+    else if (one === null) fxNote.textContent = t('fx.noRate', { cur: entryCurrency });
+    else fxNote.textContent = `${converted > 0 ? `≈ ${formatMoney(converted, baseCurrency)} · ` : ''}${t('fx.rate', { base: formatMoney(1, baseCurrency), amount: formatMoney(one, entryCurrency) })}`;
+  };
+  const renderQuickAmounts = () => {
+    document.getElementById('quick-amounts').innerHTML = quickAmounts(entryCurrency)
+      .map((v) => `<button type="button" class="quick-amount" data-add="${v}">+${v}</button>`).join('');
+  };
+  const setEntryCurrency = async (code) => {
+    entryCurrency = CURRENCIES[code] ? code : baseCurrency;
+    document.getElementById('exp-currency').value = entryCurrency;
+    document.getElementById('exp-currency-symbol').textContent = CURRENCIES[entryCurrency][0];
+    renderQuickAmounts();
+    updateFxNote();
+    if (entryCurrency !== baseCurrency && !fxRates) {
+      const { rates } = await getRates();
+      fxRates = rates;
+      if (!rates) { fxNote.textContent = t('fx.offline'); return; }
+      updateFxNote();
+    }
+  };
+  renderQuickAmounts();
+  document.getElementById('exp-currency').addEventListener('change', (ev) => { hapticSelect(); setEntryCurrency(ev.target.value); });
+  amountInput.addEventListener('input', updateFxNote);
+
+  document.getElementById('quick-amounts').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.quick-amount');
+    if (!btn) return;
+    const add = Number(btn.dataset.add || 0);
+    const current = parseFloat(amountInput?.value || '0') || 0;
+    amountInput.value = String(Math.round((current + add) * 100) / 100);
+    fitAmount();
+    updateFxNote();
+    hapticTap();
   });
 
   const dateInput = document.getElementById('exp-date');
@@ -216,10 +262,10 @@ export async function showAddExpenseModal(prefill = {}) {
   };
   const applyPrefill = (p) => {
     if (p.amount > 0) { amountInput.value = String(p.amount); fitAmount(); }
-    // Слипы, QR и тайские счета — в батах; бюджет в другой валюте — сумму надо пересчитать вручную
-    if (p.amount > 0 && p.thb && couple?.currency && couple.currency !== 'THB') {
-      setTimeout(() => showToast(t('capture.currencyNote', { cur: couple.currency })), 1200);
-    }
+    // Слипы, QR и тайские счета — в батах; если бюджет в другой валюте, сумму пересчитаем по курсу
+    const prefillCurrency = p.currency || (p.thb ? 'THB' : null);
+    if (prefillCurrency && prefillCurrency !== entryCurrency) setEntryCurrency(prefillCurrency);
+    else updateFxNote();
     if (p.description) document.getElementById('exp-desc').value = p.description;
     if (p.categoryId) {
       const opt = backdrop.querySelector(`.cat-option[data-id="${p.categoryId}"]`);
@@ -330,6 +376,7 @@ export async function showAddExpenseModal(prefill = {}) {
       date: dateInput.value,
       payer: backdrop.querySelector('.payer-option.selected')?.dataset.id || null,
       receiptBlob: receiptInput.files?.[0] || receiptBlob,
+      currency: entryCurrency,
     };
     backdrop.remove();
     await loadAll();
@@ -396,15 +443,21 @@ export async function showAddExpenseModal(prefill = {}) {
   });
 
   document.getElementById('btn-save-exp').onclick = async () => {
-    const amount = parseFloat(document.getElementById('exp-amount').value);
+    const entered = parseFloat(document.getElementById('exp-amount').value);
     const description = document.getElementById('exp-desc').value.trim();
     const categoryEl = backdrop.querySelector('.cat-option.selected:not(#btn-add-category)');
     const payerEl = backdrop.querySelector('.payer-option.selected');
     const date = document.getElementById('exp-date').value;
     const recurring = document.getElementById('exp-recurring').checked;
     const goalId = goalSelect?.value || null;
-    if (!amount || amount <= 0) { showToast(t('common.enterAmount')); return; }
+    if (!entered || entered <= 0) { showToast(t('common.enterAmount')); return; }
     if (!description && !goalId) { showToast(t('home.enterDescription')); return; }
+    const foreign = entryCurrency !== baseCurrency;
+    if (foreign && !fxRates) fxRates = (await getRates()).rates;
+    const amount = foreign ? convertedAmount() : entered;
+    // Без курса не гадаем: пусть введут сумму в валюте бюджета
+    if (!amount) { showToast(t('fx.offline')); return; }
+    const original = foreign ? { original_amount: entered, original_currency: entryCurrency } : {};
 
     const isShared = payerEl?.dataset.id === 'shared';
     const paidById = isShared ? profile.id : (payerEl?.dataset.id || profile.id);
@@ -432,8 +485,9 @@ export async function showAddExpenseModal(prefill = {}) {
       split,
       split_payer_pct: splitPct,
       expense_date: date,
-      currency: couple.currency || 'USD',
+      currency: baseCurrency,
       receipt_url: receiptPath,
+      ...original,
     };
 
     let created = null;
@@ -449,8 +503,8 @@ export async function showAddExpenseModal(prefill = {}) {
         });
         // RPC возвращает голую строку expenses — доклеиваем связь для optimistic-рендера как накопления
         created.goal_contributions = [{ goal_id: goalId, goals: { name: goals.find((g) => g.id === goalId)?.name || description } }];
-        if (receiptPath) {
-          try { created = { ...created, ...(await updateExpense(created.id, { receipt_url: receiptPath })) }; } catch { /* чек не критичен */ }
+        if (receiptPath || foreign) {
+          try { created = { ...created, ...(await updateExpense(created.id, { ...(receiptPath ? { receipt_url: receiptPath } : {}), ...original })) }; } catch { /* чек и исходная валюта не критичны */ }
         }
       } else {
         created = await addExpense(expensePayload);
@@ -615,7 +669,7 @@ function showExpenseActionsModal(expense, app) {
         ${catTile(sheetCat?.icon || 'more-horizontal', sheetCat?.color || '#888780', 56)}
         <div class="expense-sheet-amount num">${moneyHtml(expense.amount, expense.currency)}</div>
         <div class="modal-title" style="margin:0;">${e(expense.description)}</div>
-        <div class="expense-sheet-meta">${e(categoryLabel(sheetCat?.name) || t('common.other'))} · ${e(formatDate(expense.expense_date))} · ${e(sheetPayer)}</div>
+        <div class="expense-sheet-meta">${e(categoryLabel(sheetCat?.name) || t('common.other'))} · ${e(formatDate(expense.expense_date))} · ${e(sheetPayer)}${originalLabel(expense) ? ` · ${e(originalLabel(expense))}` : ''}</div>
       </div>
       <div class="action-list">
         ${expense.receipt_url ? `<button class="action-row" id="btn-view-receipt">${icon('image', 20)}${t('home.viewReceipt')}</button>` : ''}
@@ -681,8 +735,11 @@ function showExpenseActionsModal(expense, app) {
       try {
         const editPayerVal = document.getElementById('edit-paid-by').value;
         const editIsShared = editPayerVal === 'shared';
+        const newAmount = parseFloat(document.getElementById('edit-amount').value);
         await updateExpense(expense.id, {
-          amount: parseFloat(document.getElementById('edit-amount').value),
+          amount: newAmount,
+          // Сумму поправили руками — исходная из чека ей больше не соответствует
+          ...(expense.original_currency && newAmount !== parseFloat(expense.amount) ? { original_amount: null, original_currency: null } : {}),
           description: document.getElementById('edit-desc').value.trim(),
           category_id: document.getElementById('edit-category').value,
           paid_by: editIsShared ? (expense.paid_by || profile?.id) : editPayerVal,
@@ -717,6 +774,8 @@ function showExpenseActionsModal(expense, app) {
         split: expense.split,
         expense_date: todayStr(),
         currency: expense.currency,
+        original_amount: expense.original_amount ?? null,
+        original_currency: expense.original_currency ?? null,
       });
       backdrop.remove();
       await loadExpenses();
@@ -919,7 +978,7 @@ function renderHome(app) {
                   ${tile.slice(0, -'</span>'.length)}${payerBadge(exp)}</span>
                   <div class="tx-info">
                     <div class="tx-name">${e(exp.description)}</div>
-                    <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))}${solo ? '' : ` · ${e(payerName)}`}</div>
+                    <div class="tx-cat">${exp.receipt_url ? icon('paperclip', 12) : ''}${e(categoryLabel(cat?.name) || t('common.other'))}${solo ? '' : ` · ${e(payerName)}`}${originalLabel(exp) ? ` · ${e(originalLabel(exp))}` : ''}</div>
                   </div>
                   <div class="tx-amount">${moneyHtml(exp.amount, exp.currency)}</div>
                 </div>
@@ -1063,6 +1122,8 @@ function renderHome(app) {
               split: expenseData.split,
               expense_date: expenseData.expense_date,
               currency: expenseData.currency,
+              original_amount: expenseData.original_amount ?? null,
+              original_currency: expenseData.original_currency ?? null,
             });
             await loadExpenses();
             if (getCurrentPath() === '/') renderHome(app);
@@ -1235,6 +1296,7 @@ export async function runPaymentCheck({ force = false, retry = false } = {}) {
       if (!it.slip.amount && !already) showToast(t('capture.scanNoAmount'));
       showAddExpenseModal({
         thb: it.slip.kind === 'slip' || /฿|THB|baht|บาท/i.test(it.slip.text || ''),
+        currency: it.slip.currency || null,
         amount: it.slip.amount,
         description: slipDescription(it.slip, t('capture.transfer')),
         categoryId: slipCategoryId(it.slip, categories, categoryLabel),

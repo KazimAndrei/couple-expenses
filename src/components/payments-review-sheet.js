@@ -12,6 +12,7 @@ import { showToast } from '../services/toast.js';
 import { hapticSelect, hapticSuccess } from '../services/haptics.js';
 import { soundAdd } from '../services/sounds.js';
 import { getReadableError } from '../services/errors.js';
+import { convertAmount, getRates } from '../lib/fx.js';
 
 const e = escapeHtml;
 
@@ -21,9 +22,10 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
   const payerMembers = [sides.memberA, sides.memberB].filter(Boolean);
   const cur = CURRENCIES[couple?.currency]?.[0] || couple?.currency || '';
   // Суммы слипов — в батах, у Apple Pay валюта приходит вместе с суммой
+  const currencyOf = (it) => (it.source === 'wallet' ? it.slip.currency : 'THB');
   const foreign = (it) => {
     if (!couple?.currency) return false;
-    const code = it.source === 'wallet' ? it.slip.currency : 'THB';
+    const code = currencyOf(it);
     return !!code && code !== couple.currency;
   };
   const allWallet = items.every((it) => it.source === 'wallet');
@@ -60,7 +62,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
      <div class="sheet-body">
       <div class="modal-handle"></div>
       <div class="modal-title">${t('capture.foundTitle', { n: rows.length })}</div>
-      <p class="capture-sub">${subtitle()}</p>
+      <p class="capture-sub" id="pay-sub">${subtitle()}</p>
       <div class="pay-list">
         ${rows.map((r) => `
         <div class="pay-row ${r.checked ? 'on' : ''}" data-idx="${r.idx}">
@@ -68,7 +70,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
           <div class="pay-thumb${r.source === 'wallet' ? ' wallet' : ''}" data-thumb="${r.idx}">${r.source === 'wallet' ? icon('credit-card', 18) : ''}</div>
           <div class="pay-main">
             <div class="pay-title">${e(r.title)}</div>
-            <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${foreign(r) && r.slip.amount ? `<b class="pay-dup">${e(`${r.slip.currency} ${r.slip.amount}`)}</b> · ` : ''}${e(meta(r.slip))}</div>
+            <div class="pay-meta">${r.alreadyAdded ? `<b class="pay-dup">${t('capture.alreadyShort')}</b> · ` : ''}${foreign(r) && r.slip.amount ? `<b class="pay-dup">${e(`${currencyOf(r)} ${r.slip.amount}`)}</b> · ` : ''}${e(meta(r.slip))}</div>
           </div>
           <label class="pay-amount"><span>${e(cur)}</span><input type="number" inputmode="decimal" step="0.01" min="0" value="${r.slip.amount ?? ''}" aria-label="${t('common.amount')}"></label>
           <div class="pay-extra">
@@ -152,6 +154,24 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
     input.addEventListener('input', () => fit(input));
   });
 
+  // Чужую валюту пересчитываем по курсу дня; не вышло (нет сети) — остаётся сумма из чека и просьба поправить
+  if (rows.some(foreign)) {
+    getRates().then(({ rates }) => {
+      if (!rates || !backdrop.isConnected) return;
+      let converted = 0;
+      for (const r of rows.filter(foreign)) {
+        const value = convertAmount(r.slip.amount, currencyOf(r), couple.currency, rates);
+        const input = backdrop.querySelector(`.pay-row[data-idx="${r.idx}"] .pay-amount input`);
+        if (!value || !input) continue;
+        input.value = String(value);
+        fit(input);
+        r.original = { original_amount: r.slip.amount, original_currency: currencyOf(r) };
+        converted += 1;
+      }
+      if (converted) backdrop.querySelector('#pay-sub').textContent = t('fx.foundSub', { cur: couple.currency });
+    });
+  }
+
   backdrop.querySelectorAll('.pay-row').forEach((rowEl) => {
     const r = rows[Number(rowEl.dataset.idx)];
     const strip = rowEl.querySelector('.pay-cats');
@@ -220,6 +240,7 @@ export function openPaymentsReviewSheet(items, { onDone, defaultPayerId = 'share
           expense_date: r.slip.date && r.slip.date <= todayStr() ? r.slip.date : todayStr(),
           currency: couple.currency || 'USD',
           receipt_url: receiptPath,
+          ...(r.original || {}),
         }));
         added += 1;
         r.added = true;
