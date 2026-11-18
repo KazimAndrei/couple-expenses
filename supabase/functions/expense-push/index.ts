@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
     return new Response("unauthorized", { status: 401 });
   }
 
-  let body: { expense_id?: string; contribution_id?: string; reaction_id?: string; monthly_summary_couple_id?: string; month?: string; weekly_recap_couple_id?: string; from?: string; to?: string };
+  let body: { expense_id?: string; contribution_id?: string; reaction_id?: string; monthly_summary_couple_id?: string; month?: string; weekly_recap_couple_id?: string; from?: string; to?: string; bill_reminder_id?: string; today?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -259,6 +259,30 @@ Deno.serve(async (req: Request) => {
         ? { title: "Итог недели готов ✨", body: `Потрачено ${formatAmount(spent, couple.currency, lang)} за неделю. Откройте — посмотрите вместе` }
         : { title: "Your weekly recap is ready ✨", body: `${formatAmount(spent, couple.currency, lang)} spent this week. Open it and look together` },
       { weekly_recap: body.from },
+    );
+    return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // ---- Напоминание о счёте (pg_cron, ежедневно): завтра или сегодня ----
+  if (body.bill_reminder_id) {
+    const { data: bill } = await db
+      .from("recurring_expenses")
+      .select("id, couple_id, paid_by, split, amount, currency, description")
+      .eq("id", body.bill_reminder_id)
+      .maybeSingle();
+    if (!bill) return new Response("bill not found", { status: 404 });
+    const members = await coupleMembers(db, bill.couple_id);
+    // Общий счёт — обоим; личный — тому, кто за него отвечает
+    const targets = bill.split === "equal" || !bill.paid_by
+      ? members.map((m) => m.id)
+      : members.filter((m) => m.id === bill.paid_by).map((m) => m.id);
+    const sent = await sendToUsers(
+      db, targets,
+      (lang) => ({
+        title: lang === "ru" ? (body.today ? "Платёж сегодня" : "Платёж завтра") : (body.today ? "Bill due today" : "Bill due tomorrow"),
+        body: `${bill.description} · ${formatAmount(Number(bill.amount), bill.currency, lang)}`,
+      }),
+      { bill_id: bill.id },
     );
     return new Response(JSON.stringify({ sent }), { headers: { "Content-Type": "application/json" } });
   }

@@ -6,6 +6,7 @@ import { t, categoryLabel } from '../lib/i18n.js';
 import { moneyFlow } from '../lib/money-flow.js';
 import { renderTabBar } from '../components/tab-bar.js';
 import { openWeeklyRecap } from '../components/weekly-recap.js';
+import { billsDigest, loadBills } from './bills-page.js';
 import { showToast } from '../services/toast.js';
 import { getReadableError } from '../services/errors.js';
 import { soundDelete } from '../services/sounds.js';
@@ -221,6 +222,18 @@ export function registerAnalyticsRoute() {
           <div class="stat-card"><div class="stat-label">${t('analytics.vsPrevShort')}</div><div class="stat-value ${prevTotal > 0 ? (trendPct > 0 ? 'up' : trendPct < 0 ? 'down' : '') : ''}">${prevTotal > 0 ? `${trendPct !== 0 ? icon(trendPct > 0 ? 'arrow-up-right' : 'arrow-down-right', 15, 'currentColor', 2.6) : ''}${Math.abs(trendPct)}%` : '—'}</div></div>
           <div class="stat-card"><div class="stat-label">${t('analytics.txCount')}</div><div class="stat-value">${filteredExpenses.length}</div></div>
         </div>
+        <div class="link-cards">
+          <button type="button" class="link-card" id="btn-open-bills">
+            ${catTile('calendar', '#7f77dd', 38)}
+            <span><b>${t('bills.title')}</b><small id="bills-card-sub">${t('bills.cardSub')}</small></span>
+            ${icon('chevron-right', 16)}
+          </button>
+          <button type="button" class="link-card" id="btn-open-reports">
+            ${catTile('trending-up', '#378add', 38)}
+            <span><b>${t('reports.title')}</b><small>${t('reports.cardSub')}</small></span>
+            ${icon('chevron-right', 16)}
+          </button>
+        </div>
         <div class="card">
           <div class="card-title"><span>${t('analytics.byCategory')}</span></div>
           ${sortedCats.length === 0 ? `<div class="empty-state" style="padding:20px 8px;"><p>${t('analytics.noData')}</p><button class="btn btn-primary" id="btn-empty-add-expense" style="margin-top: 12px; max-width: 240px;">${t('home.addExpense')}</button></div>` : `
@@ -326,6 +339,19 @@ export function registerAnalyticsRoute() {
       ${renderTabBar()}
     `;
     document.getElementById('btn-week-recap')?.addEventListener('click', () => openWeeklyRecap());
+    document.getElementById('btn-open-bills')?.addEventListener('click', () => navigate('/bills'));
+    document.getElementById('btn-open-reports')?.addEventListener('click', () => navigate('/reports'));
+    // Подпись на карточке платежей: ближайший платёж или просрочка. Грузим отдельно, экран не ждёт.
+    loadBills(state.couple.id).then(({ bills, payments }) => {
+      const sub = document.getElementById('bills-card-sub');
+      if (!sub || !bills.length) return;
+      const digest = billsDigest(bills, payments);
+      const item = digest.overdue[0] || digest.next;
+      if (digest.overdue.length) sub.classList.add('warn');
+      sub.textContent = item
+        ? `${item.bill.description} · ${digest.label(item.status)}`
+        : t('bills.perMonthShort', { amount: formatMoney(digest.totals.monthly, state.couple.currency) });
+    }).catch(() => { /* подпись не обязательна */ });
     app.querySelectorAll('.filter-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         if (chip.dataset.disabled === 'true') {

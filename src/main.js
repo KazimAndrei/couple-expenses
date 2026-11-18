@@ -20,6 +20,8 @@ import { registerAnalyticsRoute } from './pages/analytics-page.js';
 import { registerGoalsRoute } from './pages/goals-page.js';
 import { registerProfileRoute } from './pages/profile-page.js';
 import { registerPaywallRoute } from './pages/paywall-page.js';
+import { registerBillsRoute } from './pages/bills-page.js';
+import { registerReportsRoute } from './pages/reports-page.js';
 import { subscribe } from './lib/store.js';
 import { clearWidgets, syncWidgets } from './services/widgets.js';
 import { initDeepLinks } from './services/deep-links.js';
@@ -36,6 +38,8 @@ registerAnalyticsRoute();
 registerGoalsRoute();
 registerProfileRoute();
 registerPaywallRoute();
+registerBillsRoute();
+registerReportsRoute();
 
 function renderBootLoader(app) {
   app.innerHTML = `

@@ -6,7 +6,9 @@ import { icon } from '../lib/utils.js';
 // принадлежит главной (home-page.js слушает событие) — так таб-бар не тянет к себе
 // модуль главной и не появляется циклический импорт.
 export function renderTabBar() {
-  const path = getCurrentPath();
+  // «Платежи» и «Отчёты» открываются из аналитики — вкладка остаётся подсвеченной
+  const current = getCurrentPath().split('?')[0];
+  const path = current === '/bills' || current === '/reports' ? '/analytics' : current;
   const tab = (target, iconName, label) => `
       <button class="tab ${path === target ? 'active' : ''}" onclick="location.hash='${target}'">
         ${icon(iconName, 22)}<span>${label}</span>

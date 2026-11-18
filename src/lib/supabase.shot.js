@@ -134,7 +134,21 @@ export async function createCouple() { return COUPLE_ROW; }
 export async function joinCouple() { return COUPLE_ROW; }
 export async function updateDisplayName() {}
 export async function getExpenses() { return EXPENSES; }
-export async function getExpensesInRange(coupleId, from, to) { return EXPENSES.filter((x) => x.expense_date >= from && x.expense_date <= to); }
+// Прошлые месяцы для отчётов и поиска подписок: те же траты, сдвинутые назад, с лёгким разбросом сумм
+const HISTORY = [];
+for (let back = 1; back <= 11; back += 1) {
+  const [y, m] = MONTH.split('-').map(Number);
+  const d = new Date(y, m - 1 - back, 1);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  EXPENSES.forEach((x, i) => {
+    // Часть трат в отдельные месяцы пропускаем, подписки и аренду оставляем ровными
+    const fixed = /Netflix|Rent|Electricity/.test(x.description);
+    if (!fixed && (i + back) % 4 === 0) return;
+    const k = fixed ? 1 : 0.75 + (((i * 7 + back * 13) % 10) / 20);
+    HISTORY.push({ ...x, id: `h${back}-${i}`, amount: Math.round(x.amount * k * 100) / 100, expense_date: `${key}-${x.expense_date.slice(8)}`, expense_reactions: [] });
+  });
+}
+export async function getExpensesInRange(coupleId, from, to) { return [...EXPENSES, ...HISTORY].filter((x) => x.expense_date >= from && x.expense_date <= to); }
 export async function addExpense(expense) {
   const cat = catById(expense.category_id) || CATS[0];
   const row = {
@@ -143,6 +157,7 @@ export async function addExpense(expense) {
     profiles: { display_name: expense.paid_by === ALEX ? 'Alex' : 'Sam' },
     goal_contributions: [],
   };
+  if (expense.recurring_id) BILL_PAYMENTS.push({ recurring_id: expense.recurring_id, expense_date: expense.expense_date });
   EXPENSES.unshift(row); // как в настоящей базе: следующая загрузка вернёт новую трату
   return row;
 }
@@ -160,9 +175,22 @@ export async function getCategories() { return CATS; }
 export async function addCategory(category) { return { ...category, id: `c${CATS.length + 1}` }; }
 export async function updateCategory(id, patch) { return { ...CATS[0], ...patch, id }; }
 export async function deleteCategory() {}
-export async function getRecurringExpenses() { return []; }
-export async function createRecurringExpense(tpl) { return { ...tpl, id: 'r1' }; }
-export async function deleteRecurringExpense() {}
+// Счета и подписки: день платежа считаем от сегодняшнего, чтобы на экране были и просрочка, и «завтра»
+const dayFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.getDate(); };
+const BILLS_CREATED = new Date(Date.now() - 40 * 86400000).toISOString();
+const BILLS = [
+  { id: 'rb1', description: 'Rent', amount: 1850, period: 'month', day_of_month: dayFromNow(1), kind: 'bill', auto_add: false, remind: true, category_id: 'c3', paid_by: ALEX, split: 'equal', currency: 'USD', active: true, created_at: BILLS_CREATED },
+  { id: 'rb2', description: 'Electricity', amount: 94.2, period: 'month', day_of_month: dayFromNow(-2), kind: 'bill', auto_add: false, remind: true, category_id: 'c3', paid_by: SAM, split: 'full_payer', currency: 'USD', active: true, created_at: BILLS_CREATED },
+  { id: 'rb3', description: 'Car insurance', amount: 1240, period: 'year', month_of_year: ((new Date().getMonth() + 2) % 12) + 1, day_of_month: 12, kind: 'bill', auto_add: false, remind: true, category_id: 'c4', paid_by: ALEX, split: 'equal', currency: 'USD', active: true, created_at: BILLS_CREATED },
+  { id: 'rb4', description: 'Netflix', amount: 15.99, period: 'month', day_of_month: dayFromNow(5), kind: 'subscription', auto_add: true, remind: false, category_id: 'c8', paid_by: ALEX, split: 'equal', currency: 'USD', active: true, created_at: BILLS_CREATED },
+  { id: 'rb5', description: 'iCloud+', amount: 119, period: 'year', month_of_year: ((new Date().getMonth() + 5) % 12) + 1, day_of_month: 3, kind: 'subscription', auto_add: true, remind: false, category_id: 'c8', paid_by: SAM, split: 'full_payer', currency: 'USD', active: true, created_at: BILLS_CREATED },
+];
+const BILL_PAYMENTS = [];
+export async function getRecurringExpenses() { return BILLS; }
+export async function createRecurringExpense(tpl) { const row = { ...tpl, id: `rb${BILLS.length + 1}`, active: true, created_at: new Date().toISOString() }; BILLS.push(row); return row; }
+export async function updateRecurringExpense(id, patch) { const row = BILLS.find((b) => b.id === id); Object.assign(row, patch); return row; }
+export async function getRecurringPayments() { return BILL_PAYMENTS; }
+export async function deleteRecurringExpense(id) { const i = BILLS.findIndex((b) => b.id === id); if (i >= 0) BILLS.splice(i, 1); }
 export async function getBudgets() { return BUDGETS; }
 export async function upsertBudget(b) { return { ...b, id: 'b9' }; }
 export async function getGoals() { return GOALS; }

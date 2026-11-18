@@ -310,6 +310,24 @@ export async function createRecurringExpense(template) {
   return data;
 }
 
+export async function updateRecurringExpense(id, patch) {
+  const { data, error } = await supabase.from('recurring_expenses').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Расходы, которыми закрывали регулярные платежи, начиная с даты: по ним видно «оплачено»
+export async function getRecurringPayments(coupleId, from) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('recurring_id, expense_date')
+    .eq('couple_id', coupleId)
+    .not('recurring_id', 'is', null)
+    .gte('expense_date', from);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function deleteRecurringExpense(id) {
   const { error } = await supabase.from('recurring_expenses').delete().eq('id', id);
   if (error) throw error;
