@@ -30,7 +30,8 @@ export function reportRange(endMonth, n) {
 
 const delta = (now, before) => (before > 0 ? Math.round((now / before - 1) * 100) : null);
 
-export function buildReport(expenses, { months, prevMonths }) {
+// partialMonth — текущий, ещё не закончившийся месяц: в среднее и в «самый дешёвый» он не идёт
+export function buildReport(expenses, { months, prevMonths, partialMonth = null }) {
   const index = new Map(months.map((key, i) => [key, i]));
   const prevSet = new Set(prevMonths);
   const byMonth = months.map((month) => ({ month, total: 0, saved: 0, count: 0 }));
@@ -64,13 +65,26 @@ export function buildReport(expenses, { months, prevMonths }) {
 
   const total = byMonth.reduce((s, r) => s + r.total, 0);
   const saved = byMonth.reduce((s, r) => s + r.saved, 0);
-  // Среднее — по месяцам, где были траты: пустые месяцы до начала учёта его бы занизили
-  const active = byMonth.filter((r) => r.count > 0);
+  // Среднее — по месяцам, где были траты: пустые месяцы до начала учёта его бы занизили.
+  // Незаконченный месяц тоже занижал бы — считаем без него, если есть другие.
+  const withData = byMonth.filter((r) => r.count > 0);
+  const full = withData.filter((r) => r.month !== partialMonth);
+  const active = full.length ? full : withData;
+  const activeTotal = active.reduce((s, r) => s + r.total, 0);
+  const activeIndexes = new Set(active.map((r) => index.get(r.month)));
   const categories = [...cats.values()]
     .filter((c) => c.total > 0 || c.prevTotal > 0)
-    .map((c) => ({ ...c, share: total > 0 ? c.total / total : 0, deltaPct: delta(c.total, c.prevTotal), change: c.total - c.prevTotal }))
+    .map((c) => ({
+      ...c,
+      share: total > 0 ? c.total / total : 0,
+      deltaPct: delta(c.total, c.prevTotal),
+      change: c.total - c.prevTotal,
+      // Среднее по тем же месяцам, что и общее «в среднем в месяц»
+      average: active.length ? c.byMonth.reduce((s, v, i) => s + (activeIndexes.has(i) ? v : 0), 0) / active.length : 0,
+    }))
     .sort((a, b) => b.total - a.total);
   const ranked = [...active].sort((a, b) => b.total - a.total);
+  const peak = [...withData].sort((a, b) => b.total - a.total)[0] || null;
 
   return {
     months,
@@ -78,10 +92,10 @@ export function buildReport(expenses, { months, prevMonths }) {
     total,
     saved,
     count: byMonth.reduce((s, r) => s + r.count, 0),
-    average: active.length ? total / active.length : 0,
+    average: active.length ? activeTotal / active.length : 0,
     prevTotal,
     deltaPct: delta(total, prevTotal),
-    peak: ranked[0] || null,
+    peak,
     lowest: ranked.length > 1 ? ranked[ranked.length - 1] : null,
     categories,
     // Что выросло и что сократилось сильнее всего в деньгах — только там, где есть с чем сравнить

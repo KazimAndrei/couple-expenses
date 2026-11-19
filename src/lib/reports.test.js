@@ -63,6 +63,18 @@ describe('buildReport', () => {
     const empty = buildReport([], range);
     expect(empty).toMatchObject({ empty: true, total: 0, average: 0, deltaPct: null, peak: null, lowest: null, categories: [] });
   });
+  it('незаконченный месяц не идёт в среднее и в «самый дешёвый»', () => {
+    const rows = [x('2026-09-10', 300, 'f', food), x('2026-10-10', 500, 'f', food), x('2026-11-02', 40, 'f', food)];
+    const p = buildReport(rows, { ...range, partialMonth: '2026-11' });
+    expect(p.average).toBe(400);
+    expect(p.lowest.month).toBe('2026-09');
+    expect(p.peak.month).toBe('2026-10');
+    expect(p.total).toBe(840);
+    expect(p.categories[0].average).toBe(400);
+  });
+  it('единственный месяц с тратами — он и есть среднее, даже незаконченный', () => {
+    expect(buildReport([x('2026-11-02', 40, 'f', food)], { ...range, partialMonth: '2026-11' }).average).toBe(40);
+  });
   it('пустые месяцы не занижают среднее', () => {
     expect(buildReport([x('2026-11-10', 300, 'f', food)], range).average).toBe(300);
   });

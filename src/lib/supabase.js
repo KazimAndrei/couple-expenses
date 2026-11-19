@@ -184,14 +184,24 @@ export async function getExpenses(coupleId, month) {
 
 // Траты за произвольный отрезок (итог недели может захватывать два месяца)
 export async function getExpensesInRange(coupleId, from, to) {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name)), expense_reactions(id)')
-    .eq('couple_id', coupleId)
-    .gte('expense_date', from)
-    .lte('expense_date', to);
-  if (error) throw error;
-  return data || [];
+  // Сервер отдаёт не больше тысячи строк за запрос — отчёт за два года читаем страницами, иначе он молча обрезался бы
+  const PAGE = 1000;
+  const rows = [];
+  for (let page = 0; page < 50; page += 1) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*, categories(name, icon, color), profiles!paid_by(display_name), goal_contributions(goal_id, goals(name)), expense_reactions(id)')
+      .eq('couple_id', coupleId)
+      .gte('expense_date', from)
+      .lte('expense_date', to)
+      .order('expense_date', { ascending: false })
+      .order('id')
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return rows;
 }
 
 export async function addExpense(expense) {

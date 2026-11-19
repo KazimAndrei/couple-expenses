@@ -39,6 +39,8 @@ export async function initNativePush() {
           token: value,
           platform: 'ios',
           lang: getLang(), // язык интерфейса → язык пушей
+          // Пояс телефона: напоминания о платежах приходят в 9 утра по местному времени
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,token' });
         if (error) { dbg(`save error: ${error.message}`); diagError('push token save failed', error); return; }

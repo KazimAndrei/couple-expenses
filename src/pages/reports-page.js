@@ -18,13 +18,15 @@ let period = 6;
 const locale = () => (getLang() === 'en' ? 'en-US' : 'ru-RU');
 const monthLabel = (key, opts) => {
   const [y, m] = key.split('-').map(Number);
-  return new Intl.DateTimeFormat(locale(), opts).format(new Date(y, m - 1, 1)).replace('.', '');
+  return new Intl.DateTimeFormat(locale(), opts).format(new Date(y, m - 1, 1)).replace(/\./g, '').replace(/\s*г$/, '');
 };
 const compact = (value) => new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 const deltaPill = (pct, { small = false } = {}) => {
   if (pct === null || pct === 0) return '';
   // Рост трат — тревожный цвет, снижение — спокойный
-  return `<span class="delta ${pct > 0 ? 'up' : 'down'}${small ? ' small' : ''}">${icon(pct > 0 ? 'trending-up' : 'trending-down', small ? 11 : 13, 'currentColor', 2.6)}${Math.abs(pct)}%</span>`;
+  // «+4290%» ничего не говорит — после десятикратного роста пишем «10×+»
+  const text = Math.abs(pct) >= 1000 ? '10×+' : `${Math.abs(pct)}%`;
+  return `<span class="delta ${pct > 0 ? 'up' : 'down'}${small ? ' small' : ''}">${icon(pct > 0 ? 'trending-up' : 'trending-down', small ? 11 : 13, 'currentColor', 2.6)}${text}</span>`;
 };
 
 export function registerReportsRoute() {
@@ -32,7 +34,7 @@ export function registerReportsRoute() {
     const state = getState();
     if (!state.couple) { navigate('/'); return; }
     const cur = state.couple.currency;
-    const range = reportRange(currentMonth(), period);
+    const range = { ...reportRange(currentMonth(), period), partialMonth: currentMonth() };
     let report = buildReport([], range);
     try {
       report = buildReport(await getExpensesInRange(state.couple.id, range.from, range.to), range);
@@ -74,9 +76,9 @@ export function registerReportsRoute() {
           <div class="report-bars" style="--n:${report.byMonth.length}">
             ${report.byMonth.map((m) => `
             <div class="report-bar ${report.peak?.month === m.month ? 'peak' : ''}">
-              <span class="report-bar-value">${m.total > 0 ? compact(m.total) : ''}</span>
-              <i style="height:${Math.max(m.total > 0 ? 4 : 0, Math.round((m.total / max) * 100))}%"></i>
-              <span class="report-bar-label">${e(monthLabel(m.month, { month: report.byMonth.length > 6 ? 'narrow' : 'short' }))}</span>
+              <span class="report-bar-value">${m.total > 0 && (report.byMonth.length <= 6 || report.peak?.month === m.month) ? compact(m.total) : ''}</span>
+              <span class="report-bar-track"><i style="height:${Math.max(m.total > 0 ? 4 : 0, Math.round((m.total / max) * 100))}%"></i></span>
+              <span class="report-bar-label">${e(report.byMonth.length > 6 ? monthLabel(m.month, { month: 'short' }).slice(0, 3) : monthLabel(m.month, { month: 'short' }))}</span>
             </div>`).join('')}
           </div>
           ${report.peak && report.lowest ? `<div class="report-note">${t('reports.peakNote', { peak: monthLabel(report.peak.month, { month: 'long' }), low: monthLabel(report.lowest.month, { month: 'long' }) })}</div>` : ''}
@@ -96,7 +98,7 @@ export function registerReportsRoute() {
               ${catTile(c.icon, c.color, 38)}
               <div class="report-cat-main">
                 <div class="report-cat-row"><b>${e(categoryLabel(c.name) || t('common.other'))}</b><span class="num">${formatMoney(c.total, cur)}</span></div>
-                <div class="report-cat-row dim"><span>${Math.round(c.share * 100)}% · ${t('reports.perMonth', { amount: formatMoney(c.total / report.months.length, cur) })}</span>${deltaPill(c.deltaPct, { small: true })}</div>
+                <div class="report-cat-row dim"><span>${Math.round(c.share * 100)}% · ${t('reports.perMonth', { amount: formatMoney(c.average, cur) })}</span>${deltaPill(c.deltaPct, { small: true })}</div>
               </div>
               <div class="spark" style="--c:${e(c.color)}">${c.byMonth.map((v) => `<i style="height:${Math.max(v > 0 ? 8 : 3, Math.round((v / top) * 100))}%"></i>`).join('')}</div>
             </div>`;

@@ -605,7 +605,7 @@ export async function showAddExpenseModal(prefill = {}) {
       const path = getCurrentPath();
       if (path === '/') {
         renderHome(document.getElementById('app'));
-      } else if (path === '/analytics' || (path === '/goals' && goalId)) {
+      } else if (path === '/analytics' || path === '/reports' || path === '/bills' || (path === '/goals' && goalId)) {
         // «+» доступна с любого экрана — экран, который показывает эту трату, перерисовываем
         navigate(path);
       }

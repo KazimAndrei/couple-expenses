@@ -169,7 +169,13 @@ export async function addExpenseComment(expense, comment) {
   return { id: `r${Date.now()}`, author_id: ALEX, comment, created_at: new Date().toISOString() };
 }
 export async function deleteExpenseReaction() {}
-export async function deleteExpense() {}
+export async function deleteExpense(id) {
+  const i = EXPENSES.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  const [gone] = EXPENSES.splice(i, 1);
+  const p = BILL_PAYMENTS.findIndex((x) => x.recurring_id === gone.recurring_id && x.expense_date === gone.expense_date);
+  if (gone.recurring_id && p >= 0) BILL_PAYMENTS.splice(p, 1);
+}
 export async function updateExpense(id, patch) { return { ...EXPENSES[0], ...patch }; }
 export async function getCategories() { return CATS; }
 export async function addCategory(category) { return { ...category, id: `c${CATS.length + 1}` }; }

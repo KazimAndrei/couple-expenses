@@ -2,7 +2,7 @@
 // Расчёты — lib/bills.js; данные — таблица recurring_expenses и расходы, привязанные к платежам.
 import { route, navigate } from '../lib/router.js';
 import { getState, isSolo } from '../lib/store.js';
-import { addExpense, createRecurringExpense, deleteRecurringExpense, getExpensesInRange, getRecurringExpenses, getRecurringPayments, updateRecurringExpense } from '../lib/supabase.js';
+import { addExpense, createRecurringExpense, deleteExpense, deleteRecurringExpense, getExpensesInRange, getRecurringExpenses, getRecurringPayments, updateRecurringExpense } from '../lib/supabase.js';
 import { billStatus, billTotals, detectRecurring, monthlyCost, upcomingBills, yearlyCost } from '../lib/bills.js';
 import { monthKeys } from '../lib/reports.js';
 import { catTile, currentMonth, escapeHtml, formatMoney, icon, moneyHtml, todayStr } from '../lib/utils.js';
@@ -36,12 +36,13 @@ export async function loadBills(coupleId) {
   const now = new Date();
   const [bills, payments] = await Promise.all([
     getRecurringExpenses(coupleId),
-    getRecurringPayments(coupleId, `${now.getFullYear()}-01-01`),
+    // Полтора года назад: оплата годового платежа в прошлом году тоже должна быть видна
+    getRecurringPayments(coupleId, todayStr(new Date(now.getFullYear(), now.getMonth() - 18, 1))),
   ]);
   return { bills, payments };
 }
 
-function openBillSheet(bill, { onDone, prefill = {} } = {}) {
+function openBillSheet(bill, { onDone, prefill = {}, status = null } = {}) {
   const { couple, categories, members, profile } = getState();
   const solo = isSolo();
   const sides = resolveMemberSides(members);
@@ -62,10 +63,10 @@ function openBillSheet(bill, { onDone, prefill = {} } = {}) {
         <button type="button" class="segc-btn ${src.kind === 'subscription' ? 'on' : ''}" data-kind="subscription">${t('bills.kindSub')}</button>
       </div>
       <div class="form-group"><label class="form-label">${t('common.name')}</label>
-        <input type="text" class="form-input" id="bill-name" value="${e(src.description || '')}" placeholder="${t('bills.namePlaceholder')}" autocomplete="off"></div>
+        <input type="text" class="form-input" id="bill-name" value="${e(src.description || '')}" placeholder="${t('bills.namePlaceholder')}" autocomplete="off" maxlength="120"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">${t('common.amount')} (${e(couple.currency)})</label>
-          <input type="number" class="form-input" id="bill-amount" value="${src.amount ?? ''}" placeholder="0" inputmode="decimal" min="0" step="0.01"></div>
+          <input type="number" class="form-input" id="bill-amount" value="${src.amount ?? ''}" placeholder="0" inputmode="decimal" min="0" max="100000000" step="0.01"></div>
         <div class="form-group"><label class="form-label">${t('bills.period')}</label>
           <select class="form-input" id="bill-period">
             <option value="month" ${src.period !== 'year' ? 'selected' : ''}>${t('bills.periodMonth')}</option>
@@ -88,7 +89,7 @@ function openBillSheet(bill, { onDone, prefill = {} } = {}) {
       <label class="toggle-row"><span><b>${t('bills.autoAdd')}</b><small>${t('bills.autoAddHint')}</small></span><input type="checkbox" id="bill-auto" ${src.auto_add ? 'checked' : ''}></label>
       <label class="toggle-row" id="bill-remind-row"><span><b>${t('bills.remind')}</b><small>${t('bills.remindHint')}</small></span><input type="checkbox" id="bill-remind" ${src.remind !== false ? 'checked' : ''}></label>
       ${bill ? `<div class="action-list" style="margin-top:14px;">
-        ${!bill.auto_add ? `<button class="action-row" id="btn-bill-paid">${icon('check', 20)}${t('bills.markPaid')}</button>` : ''}
+        ${!bill.auto_add && !status?.paid ? `<button class="action-row" id="btn-bill-paid">${icon('check', 20)}${t('bills.markPaid')}</button>` : ''}
         <button class="action-row danger" id="btn-bill-delete">${icon('trash-2', 20)}${t('common.delete')}</button>
       </div>` : ''}
      </div>
@@ -116,14 +117,21 @@ function openBillSheet(bill, { onDone, prefill = {} } = {}) {
     hapticSelect();
   }));
 
-  const finish = (message) => { backdrop.remove(); if (message) showToast(message); onDone?.(); };
+  const finish = (message, toastOptions) => { backdrop.remove(); if (message) showToast(message, toastOptions); onDone?.(); };
   const fail = (err) => showToast(t('common.error', { msg: getReadableError(err) }));
+  // Одно действие за раз: второе нажатие, пока идёт запрос, не должно создать второй платёж или расход
+  let busy = false;
+  const once = async (action) => {
+    if (busy) return;
+    busy = true;
+    try { await action(); } catch (err) { fail(err); } finally { busy = false; }
+  };
 
-  backdrop.querySelector('#btn-bill-save').addEventListener('click', async () => {
+  backdrop.querySelector('#btn-bill-save').addEventListener('click', () => once(async () => {
     const description = backdrop.querySelector('#bill-name').value.trim();
     const amount = parseFloat(backdrop.querySelector('#bill-amount').value);
     if (!description) { showToast(t('common.enterTitle')); return; }
-    if (!(amount > 0)) { showToast(t('common.enterAmount')); return; }
+    if (!(amount > 0) || amount > 100000000) { showToast(t('common.enterAmount')); return; }
     const chosen = backdrop.querySelector('.payer-option.selected')?.dataset.id || profile.id;
     const shared = chosen === 'shared';
     const period = backdrop.querySelector('#bill-period').value;
@@ -140,34 +148,36 @@ function openBillSheet(bill, { onDone, prefill = {} } = {}) {
       split: shared ? 'equal' : 'full_payer',
       auto_add: backdrop.querySelector('#bill-auto').checked,
       remind: backdrop.querySelector('#bill-remind').checked,
+      // Сумма вводится в валюте пары (так подписано поле) — в ней же и считаются итоги
+      currency: couple.currency || 'USD',
     };
-    try {
-      if (bill) await updateRecurringExpense(bill.id, payload);
-      else await createRecurringExpense({ ...payload, couple_id: couple.id, currency: couple.currency || 'USD', split_payer_pct: 50 });
-      hapticSuccess();
-      finish(t(bill ? 'bills.saved' : 'bills.added'));
-    } catch (err) { fail(err); }
-  });
-  backdrop.querySelector('#btn-bill-paid')?.addEventListener('click', async () => {
-    try {
-      await payBill(bill);
-      finish(t('bills.paidToast'));
-    } catch (err) { fail(err); }
-  });
-  backdrop.querySelector('#btn-bill-delete')?.addEventListener('click', async () => {
+    if (bill) await updateRecurringExpense(bill.id, payload);
+    else await createRecurringExpense({ ...payload, couple_id: couple.id, split_payer_pct: 50 });
+    hapticSuccess();
+    finish(t(bill ? 'bills.saved' : 'bills.added'));
+  }));
+  backdrop.querySelector('#btn-bill-paid')?.addEventListener('click', () => once(async () => {
+    const expense = await payBill(bill);
+    finish(t('bills.paidToast'), {
+      actionLabel: t('common.undo'),
+      durationMs: 5000,
+      onAction: async () => {
+        try { await deleteExpense(expense.id); onDone?.(); } catch (err) { fail(err); }
+      },
+    });
+  }));
+  backdrop.querySelector('#btn-bill-delete')?.addEventListener('click', () => once(async () => {
     if (!window.confirm(t('bills.confirmDelete', { name: bill.description }))) return;
-    try {
-      await deleteRecurringExpense(bill.id);
-      soundDelete();
-      finish(t('bills.deleted'));
-    } catch (err) { fail(err); }
-  });
+    await deleteRecurringExpense(bill.id);
+    soundDelete();
+    finish(t('bills.deleted'));
+  }));
 }
 
 // «Оплачено»: расход сегодняшним числом, привязанный к платежу
 async function payBill(bill) {
   const { couple } = getState();
-  await addExpense({
+  const expense = await addExpense({
     couple_id: couple.id,
     category_id: bill.category_id,
     paid_by: bill.paid_by,
@@ -181,6 +191,7 @@ async function payBill(bill) {
   });
   hapticSuccess();
   soundAdd();
+  return expense;
 }
 
 export function registerBillsRoute() {
@@ -224,7 +235,7 @@ export function registerBillsRoute() {
         <button type="button" class="bill-row ${status.overdue ? 'overdue' : ''} ${status.paid ? 'paid' : ''}" data-id="${bill.id}">
           <span class="bill-date"><b>${Number(status.due.slice(8))}</b><i>${e(monthShort(status.due))}</i></span>
           <span class="bill-main">
-            <span class="bill-name">${e(bill.description)}${solo ? '' : `<i class="bill-who ${sideClass(bill)}"></i>`}</span>
+            <span class="bill-name"><span>${e(bill.description)}</span>${solo ? '' : `<i class="bill-who ${sideClass(bill)}"></i>`}</span>
             <span class="bill-meta">${e(meta)}</span>
           </span>
           <span class="bill-side">
@@ -269,7 +280,7 @@ export function registerBillsRoute() {
             ${subs.length ? `<div class="bill-list">${subs.map(({ bill }) => `
               <button type="button" class="bill-row sub" data-id="${bill.id}">
                 ${catTile(catOf(bill)?.icon || 'credit-card', catOf(bill)?.color || '#534AB7', 42)}
-                <span class="bill-main"><span class="bill-name">${e(bill.description)}</span>
+                <span class="bill-main"><span class="bill-name"><span>${e(bill.description)}</span></span>
                   <span class="bill-meta">${t(bill.period === 'year' ? 'bills.subYearly' : 'bills.subMonthly', { amount: formatMoney(bill.amount, bill.currency || cur) })}</span></span>
                 <span class="bill-side"><b>${formatMoney(yearlyCost(bill), bill.currency || cur)}</b><i class="bill-when">${t('bills.aYear')}</i></span>
               </button>`).join('')}</div>
@@ -280,7 +291,7 @@ export function registerBillsRoute() {
               <div class="bill-list">${suggestions.map((s, i) => `
               <div class="bill-row sub suggestion">
                 ${catTile(s.categories?.icon || 'repeat', s.categories?.color || '#888780', 42)}
-                <span class="bill-main"><span class="bill-name">${e(s.description)}</span>
+                <span class="bill-main"><span class="bill-name"><span>${e(s.description)}</span></span>
                   <span class="bill-meta">${t('bills.foundMeta', { amount: formatMoney(s.amount, cur), months: s.months })}</span></span>
                 <button type="button" class="btn btn-secondary btn-small" data-suggest="${i}">${t('common.add')}</button>
               </div>`).join('')}</div>` : ''}
@@ -296,11 +307,11 @@ export function registerBillsRoute() {
     app.querySelectorAll('.segc-btn[data-view]').forEach((btn) => btn.addEventListener('click', () => { view = btn.dataset.view; hapticSelect(); reload(); }));
     app.querySelectorAll('.bill-row[data-id]').forEach((el) => el.addEventListener('click', () => {
       const bill = bills.find((b) => b.id === el.dataset.id);
-      if (bill) openBillSheet(bill, { onDone: reload });
+      if (bill) openBillSheet(bill, { onDone: reload, status: list.find((x) => x.bill.id === bill.id)?.status });
     }));
     app.querySelectorAll('[data-suggest]').forEach((btn) => btn.addEventListener('click', () => {
       const s = suggestions[Number(btn.dataset.suggest)];
-      openBillSheet(null, { onDone: reload, prefill: { kind: 'subscription', auto_add: true, description: s.description, amount: s.amount, category_id: s.category_id, paid_by: s.paid_by, split: s.split, day_of_month: s.day_of_month } });
+      openBillSheet(null, { onDone: reload, prefill: { kind: 'subscription', auto_add: false, description: s.description, amount: s.amount, category_id: s.category_id, paid_by: s.paid_by, split: s.split, day_of_month: s.day_of_month } });
     }));
   });
 }

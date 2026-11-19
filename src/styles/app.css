@@ -1023,7 +1023,8 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .bill-row.overdue .bill-date i { color:var(--c-danger); }
 .bill-row.paid .bill-date { background:var(--c-accent-light); color:var(--c-accent); }
 .bill-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
-.bill-name { font-size:15px; font-weight:500; display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bill-name { font-size:15px; font-weight:500; display:flex; align-items:center; gap:6px; min-width:0; }
+.bill-name > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .bill-who { width:8px; height:8px; border-radius:50%; flex-shrink:0; background:var(--c-partner-a); }
 .bill-who.b { background:var(--c-partner-b); }
 .bill-who.shared { background:var(--c-shared); }
@@ -1036,8 +1037,8 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .bills-hint { margin:0 20px 14px; font-size:13px; color:var(--c-text-secondary); line-height:1.4; }
 .delta { display:inline-flex; align-items:center; gap:4px; padding:4px 9px; border-radius:999px; font-size:12.5px; font-weight:700; }
 .delta.small { padding:2px 7px; font-size:11.5px; }
-.delta.up { background:var(--c-danger-light); color:var(--c-danger); }
-.delta.down { background:var(--c-accent-light); color:var(--c-accent); }
+.delta.up { background:var(--c-danger-light); color:#b3261e; }
+.delta.down { background:var(--c-accent-light); color:var(--c-accent-dark); }
 .report-total { font-size:36px; font-weight:700; letter-spacing:-1.2px; line-height:1.1; }
 .report-total .cents { opacity:0.55; font-size:0.6em; }
 .report-sub { font-size:13px; color:var(--c-text-secondary); margin-top:4px; }
@@ -1047,12 +1048,15 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .stat-row b { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .report-bars { display:grid; grid-template-columns:repeat(var(--n), 1fr); gap:6px; height:170px; align-items:end; }
 .report-bar { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:5px; height:100%; min-width:0; }
-.report-bar i { display:block; width:100%; max-width:34px; border-radius:8px 8px 4px 4px; background:var(--c-accent-light); animation:bar-up 0.7s var(--ease-spring) backwards; }
+/* Столбец растёт внутри своей дорожки: иначе flex сжимал все столбцы до одной высоты */
+.report-bar-track { position:relative; flex:1; min-height:0; width:100%; }
+.report-bar i { position:absolute; left:0; right:0; bottom:0; margin:0 auto; display:block; width:100%; max-width:34px; border-radius:8px 8px 4px 4px; background:var(--c-accent-light); transform-origin:bottom; animation:bar-up 0.7s var(--ease-spring) backwards; }
 @supports (background: color-mix(in srgb, red, blue)) { .report-bar i { background:color-mix(in srgb, var(--c-accent) 45%, var(--c-surface-alt)); } }
 .report-bar.peak i { background:var(--c-accent); }
-@keyframes bar-up { from { height:0 !important; } }
-.report-bar-value { font-size:10.5px; font-weight:600; color:var(--c-text-secondary); white-space:nowrap; font-variant-numeric:tabular-nums; }
+@keyframes bar-up { from { transform:scaleY(0); } }
+.report-bar-value { min-height:14px; line-height:14px; font-size:10.5px; font-weight:600; color:var(--c-text-secondary); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .report-bar.peak .report-bar-value { color:var(--c-text); }
+.report-bars[style*="--n:12"] .report-bar-label { font-size:9.5px; }
 .report-bar-label { font-size:11px; color:var(--c-text-secondary); text-transform:capitalize; white-space:nowrap; }
 .report-note { margin-top:12px; font-size:13px; color:var(--c-text-secondary); line-height:1.4; }
 .report-change-head { font-size:12px; font-weight:600; color:var(--c-text-secondary); text-transform:uppercase; letter-spacing:0.4px; margin:10px 0 6px; }
@@ -1072,3 +1076,8 @@ body.scrolled .header, body.scrolled .filter-sticky {
 .spark { display:flex; align-items:flex-end; gap:2px; width:54px; height:30px; flex-shrink:0; }
 .spark i { flex:1; border-radius:2px; background:var(--c); opacity:0.85; }
 @media (prefers-reduced-motion: reduce) { .report-bar i { animation:none; } }
+
+/* В тёмной теме подложки плашек тёмные — текст светлее */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .delta.up { color:#ff8a80; } :root:not([data-theme="light"]) .delta.down { color:#5fd3a8; } }
+:root[data-theme="dark"] .delta.up { color:#ff8a80; }
+:root[data-theme="dark"] .delta.down { color:#5fd3a8; }

@@ -38,6 +38,47 @@ describe('billStatus', () => {
     expect(billStatus(bill({ day_of_month: 5, created_at: '2026-11-02T08:00:00Z' }), [], NOW).overdue).toBe(true);
     expect(billStatus(bill({ day_of_month: 5, created_at: '2026-06-02T08:00:00Z' }), [], NOW).overdue).toBe(true);
   });
+  it('оплата заранее через границу месяца — не просрочка', () => {
+    const rent = bill({ day_of_month: 1, created_at: '2026-08-15T08:00:00Z' });
+    const pays = [...paidOn('2026-09-01'), ...paidOn('2026-10-01'), ...paidOn('2026-10-30')];
+    expect(billStatus(rent, pays, new Date(2026, 10, 2))).toMatchObject({ due: '2026-12-01', overdue: false });
+    expect(billStatus(rent, pays, new Date(2026, 9, 31))).toMatchObject({ due: '2026-11-01', paid: true });
+  });
+  it('неоплаченный счёт не пропадает с началом нового месяца', () => {
+    const late = bill({ day_of_month: 28, created_at: '2026-06-01T08:00:00Z' });
+    expect(billStatus(late, paidOn('2026-09-28'), new Date(2026, 10, 1))).toMatchObject({ due: '2026-10-28', overdue: true });
+  });
+  it('поздняя оплата закрывает прошлый срок, а не следующий', () => {
+    const late = bill({ day_of_month: 28, created_at: '2026-06-01T08:00:00Z' });
+    const pays = [...paidOn('2026-09-28'), ...paidOn('2026-11-02')];
+    expect(billStatus(late, pays, new Date(2026, 10, 3))).toMatchObject({ due: '2026-11-28', paid: false, overdue: false });
+  });
+  it('годовой: поздняя оплата в январе не гасит следующий год', () => {
+    const yearly = bill({ period: 'year', month_of_year: 12, day_of_month: 20, created_at: '2025-01-01T08:00:00Z' });
+    const pays = [...paidOn('2025-12-20'), ...paidOn('2027-01-05')];
+    expect(billStatus(yearly, pays, new Date(2027, 0, 6))).toMatchObject({ due: '2027-12-20', paid: false, overdue: false });
+  });
+  it('годовой: оплата в декабре за январский срок', () => {
+    const yearly = bill({ period: 'year', month_of_year: 1, day_of_month: 10, created_at: '2025-01-01T08:00:00Z' });
+    const pays = [...paidOn('2026-01-10'), ...paidOn('2026-12-28')];
+    expect(billStatus(yearly, pays, new Date(2027, 0, 11))).toMatchObject({ due: '2028-01-10', overdue: false });
+  });
+  it('автодобавление, заведённое в этом месяце, начинается со следующего', () => {
+    expect(billStatus(bill({ auto_add: true, day_of_month: 25, created_at: '2026-11-18T08:00:00Z' }), [], NOW).due).toBe('2026-12-25');
+    expect(billStatus(bill({ auto_add: true, day_of_month: 25, created_at: '2026-10-18T08:00:00Z' }), [], NOW).due).toBe('2026-11-25');
+  });
+  it('оплата давно просроченного счёта закрывает именно его', () => {
+    const old = bill({ day_of_month: 17, created_at: '2026-10-10T08:00:00Z' });
+    expect(billStatus(old, [], new Date(2026, 10, 19))).toMatchObject({ due: '2026-10-17', overdue: true });
+    expect(billStatus(old, paidOn('2026-11-19'), new Date(2026, 10, 19))).toMatchObject({ due: '2026-11-17', overdue: true });
+    expect(billStatus(old, [...paidOn('2026-11-19'), ...paidOn('2026-11-19')], new Date(2026, 10, 19))).toMatchObject({ due: '2026-12-17', overdue: false });
+  });
+  it('две оплаты одного срока не гасят следующий', () => {
+    const b = bill({ day_of_month: 5, created_at: '2026-06-01T08:00:00Z' });
+    const pays = [...paidOn('2026-10-05'), ...paidOn('2026-11-05'), ...paidOn('2026-11-06')];
+    expect(billStatus(b, pays, NOW)).toMatchObject({ due: '2026-12-05', paid: false, overdue: false });
+    expect(billStatus(b, pays, new Date(2026, 11, 6)).overdue).toBe(true);
+  });
   it('31-е число в коротком месяце — последний день', () => {
     expect(billStatus(bill({ day_of_month: 31 }), [], NOW).due).toBe('2026-11-30');
     expect(billStatus(bill({ day_of_month: 31 }), [], new Date(2027, 1, 10)).due).toBe('2027-02-28');
@@ -90,10 +131,22 @@ describe('detectRecurring', () => {
   it('находит ежемесячные траты с близкой суммой', () => {
     const found = detectRecurring(history);
     expect(found.map((f) => f.description.trim())).toEqual(['Netflix', 'Spotify']);
-    expect(found[0]).toMatchObject({ amount: 15.99, day_of_month: 3, months: 3, category_id: 'c8' });
+    expect(found[0]).toMatchObject({ amount: 16.49, day_of_month: 3, months: 3, category_id: 'c8' });
   });
   it('не предлагает уже заведённое', () => {
     expect(detectRecurring(history, [{ description: 'NETFLIX' }]).map((f) => f.description)).toEqual(['Spotify']);
+  });
+  it('подорожавшая подписка остаётся подпиской, предлагается новая цена', () => {
+    const found = detectRecurring([x('2026-08-03', 'Gym', 10), x('2026-09-03', 'Gym', 10), x('2026-10-03', 'Gym', 12)]);
+    expect(found).toHaveLength(1);
+    expect(found[0].amount).toBe(12);
+  });
+  it('уже заведённое под более длинным названием не предлагается', () => {
+    expect(detectRecurring(history, [{ description: 'Netflix Premium' }, { description: 'Spotify' }])).toEqual([]);
+  });
+  it('нестандартное деление предлагается как общее', () => {
+    const rows = ['08', '09', '10'].map((m) => x(`2026-${m}-03`, 'Cloud', 5, { split: 'custom' }));
+    expect(detectRecurring(rows)[0].split).toBe('equal');
   });
   it('пусто — пусто', () => {
     expect(detectRecurring([])).toEqual([]);
