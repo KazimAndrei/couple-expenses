@@ -33,8 +33,8 @@ begin
   if exists (select 1 from cron.job where jobname = 'weekly-recaps') then
     perform cron.unschedule('weekly-recaps');
   end if;
-  -- Расписание включаем, когда версия с итогом недели выйдет в App Store: иначе пуш придёт тем,
-  -- у кого открыть итог ещё нечем. 02:00 UTC понедельника — утро в Азии и Европе.
-  -- perform cron.schedule('weekly-recaps', '0 2 * * 1', 'select public.send_weekly_recaps()');
+  -- Включено 19.11.2026, когда версия 1.3.0 с итогом недели вышла в App Store.
+  -- 02:00 UTC понедельника — утро в Азии, ночь в Европе, вечер воскресенья в Америке.
+  perform cron.schedule('weekly-recaps', '0 2 * * 1', 'select public.send_weekly_recaps()');
 end
 $do$;
